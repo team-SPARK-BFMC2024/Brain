@@ -17,11 +17,11 @@ class ProcessAutonomous(WorkerProcess):
         self.queuesList = queueList
         self.logging = logging
         self.debugging = debugging
-        super(processAutonomous, self).__init__(self.queuesList)
+        super(ProcessAutonomous, self).__init__(self.queuesList)
 
     def run(self):
         """Apply the initializing methods and start the threads."""
-        super(processAutonomous, self).run()
+        super(ProcessAutonomous, self).run()
 
     def _init_threads(self):
         """Create the Autonomous Publisher thread and add to the list of threads."""

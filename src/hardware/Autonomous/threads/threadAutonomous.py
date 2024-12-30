@@ -5,9 +5,7 @@ from src.utils.messages.messageHandlerSubscriber import messageHandlerSubscriber
 from src.utils.messages.messageHandlerSender import messageHandlerSender
 import cv2
 import numpy as np
-import tensorrt as trt
-import pycuda.autoinit
-import pycuda.driver as cuda
+import onnxruntime as ort
 import base64
 import time
 from enum import Enum
@@ -67,29 +65,18 @@ class threadAutonomous(ThreadWithStop):
         super(threadAutonomous, self).__init__()
 
     def initialize_model(self):
-        """Initialize YOLOv8 TensorRT engine"""
-        logger = trt.Logger(trt.Logger.WARNING)
+        """Initialize YOLOv8 ONNX model"""
         try:
-            with open("best.engine", "rb") as f:
-                runtime = trt.Runtime(logger)
-                self.engine = runtime.deserialize_cuda_engine(f.read())
-                self.context = self.engine.create_execution_context()
-                
-            # Allocate memory for inputs/outputs
-            self.inputs = []
-            self.outputs = []
-            self.bindings = []
+            # Create ONNX Runtime session
+            self.session = ort.InferenceSession("best.onnx", 
+                                            providers=['CPUExecutionProvider'])
             
-            for binding in self.engine:
-                size = trt.volume(self.engine.get_binding_shape(binding))
-                dtype = trt.nptype(self.engine.get_binding_dtype(binding))
-                host_mem = cuda.pagelocked_empty(size, dtype)
-                device_mem = cuda.mem_alloc(host_mem.nbytes)
-                self.bindings.append(int(device_mem))
-                if self.engine.binding_is_input(binding):
-                    self.inputs.append({'host': host_mem, 'device': device_mem})
-                else:
-                    self.outputs.append({'host': host_mem, 'device': device_mem})
+            # Get model metadata
+            self.input_name = self.session.get_inputs()[0].name
+            self.input_shape = self.session.get_inputs()[0].shape
+            self.output_names = [o.name for o in self.session.get_outputs()]
+            
+            self.logging.info("ONNX model initialized successfully")
         except Exception as e:
             self.logging.error(f"Failed to initialize model: {str(e)}")
             raise
@@ -208,7 +195,7 @@ class threadAutonomous(ThreadWithStop):
         self.logging.info(f"Detected objects: {[(self.classes[d[0]], d[1]) for d in detections]}")
 
     def detect_objects(self, img):
-        """Run object detection on image
+        """Run object detection using ONNX model
         
         Args:
             img: Input image (BGR format)
@@ -220,29 +207,29 @@ class threadAutonomous(ThreadWithStop):
             # Preprocess image
             input_img = cv2.resize(img, (640, 640))
             input_img = cv2.cvtColor(input_img, cv2.COLOR_BGR2RGB)
-            input_img = input_img.transpose((2, 0, 1)).astype(np.float32)
+            input_img = input_img.transpose(2, 0, 1)  # HWC to CHW
+            input_img = input_img.astype(np.float32)
             input_img /= 255.0
-            
-            # Copy input to device
-            np.copyto(self.inputs[0]['host'], input_img.ravel())
-            cuda.memcpy_htod(self.inputs[0]['device'], self.inputs[0]['host'])
+            input_img = np.expand_dims(input_img, 0)  # Add batch dimension
             
             # Run inference
-            self.context.execute_v2(self.bindings)
+            outputs = self.session.run(self.output_names, 
+                                    {self.input_name: input_img})
             
-            # Get results
-            cuda.memcpy_dtoh(self.outputs[0]['host'], self.outputs[0]['device'])
-            outputs = self.outputs[0]['host'].reshape((84, 8400)).T
+            # Process detections (assuming YOLOv8 output format)
+            predictions = outputs[0]  # Shape: (1, num_boxes, 85)
+            predictions = predictions[0]  # Remove batch dimension
             
-            # Process detections
+            # Filter detections
             detections = []
-            for row in outputs:
-                confidence = row[4]
-                if confidence > 0.5:  # Confidence threshold
-                    class_id = int(row[5])
-                    bbox = row[0:4]
-                    detections.append((class_id, confidence, bbox))
-                    
+            for pred in predictions:
+                confidence = pred[4]
+                if confidence > self.CONFIDENCE_THRESHOLD:
+                    class_scores = pred[5:]
+                    class_id = np.argmax(class_scores)
+                    bbox = pred[0:4]  # x, y, w, h
+                    detections.append((int(class_id), float(confidence), bbox))
+            
             return detections
             
         except Exception as e:

@@ -5,7 +5,7 @@ if __name__ == "__main__":
 from src.templates.workerprocess import WorkerProcess
 from src.hardware.Autonomous.threads.threadAutonomous import threadAutonomous
 
-class processAutonomous(WorkerProcess):
+class ProcessAutonomous(WorkerProcess):
     """This process handles Autonomous.
     Args:
         queueList (dictionary of multiprocessing.queues.Queue): Dictionary of queues where the ID is the type of messages.

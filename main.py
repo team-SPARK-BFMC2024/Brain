@@ -31,7 +31,7 @@ from src.data.Semaphores.Semaphores import processSemaphores
 from src.data.TrafficCommunication.processTrafficCommunication import processTrafficCommunication
 from src.utils.ipManager.IpReplacement import IPManager
 # ------ New component imports starts here ------#
-from src.hardware.Autonomous.processAutonomous import ProcessAutonomous
+# from src.hardware.Autonomous.processAutonomous import ProcessAutonomous
 # ------ New component imports ends here ------#
 # ======================================== SETTING UP ====================================
 allProcesses = list()
@@ -52,7 +52,7 @@ TrafficCommunication = True
 SerialHandler = True
 
 # ------ New component flags starts here ------#
-Autonomous = True
+# Autonomous = True
 # ------ New component flags ends here ------#
 
 # ===================================== SETUP PROCESSES ==================================
@@ -92,11 +92,11 @@ if SerialHandler:
     processSerialHandler = processSerialHandler(queueList, logging, debugging = True)
     allProcesses.append(processSerialHandler)
 
-# ------ New component runs starts here ------#
-if Autonomous:
-    processAutonomous = ProcessAutonomous(queueList, logging, debugging=False)
-    allProcesses.append(processAutonomous)
-# ------ New component runs ends here ------#
+# # ------ New component runs starts here ------#
+# if Autonomous:
+#     processAutonomous = ProcessAutonomous(queueList, logging, debugging=False)
+#     allProcesses.append(processAutonomous)
+# # ------ New component runs ends here ------#
 
 # ===================================== START PROCESSES ==================================
 for process in allProcesses:

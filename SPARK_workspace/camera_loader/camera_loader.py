@@ -4,7 +4,7 @@ from camera_loader_api import CameraLoaderAPI
 
 if __name__ == "__main__":
     # Load config
-    config_file = "camera_config.yaml"
+    config_file = "../config/camera_config.yaml"
     with open(config_file, "r") as file:
         config = yaml.safe_load(file)        
     print(config)

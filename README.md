@@ -1,33 +1,33 @@
 # SPARK - Self-driving Platform for Autonomous Research and Knowledge
 
-SPARK là một nền tảng xe tự hành được thiết kế để nghiên cứu và phát triển các thuật toán tự lái trên Jetson Nano. Hệ thống kết hợp phát hiện làn đường, nhận diện đối tượng và xử lý luật giao thông để điều khiển xe một cách tự động.
+SPARK is a self-driving platform designed for researching and developing autonomous driving algorithms on the Jetson Nano. The system combines lane detection, object recognition, and traffic rule processing to control the vehicle autonomously.
 
-## Tính năng chính
+## Key Features
 
-- Phát hiện làn đường (Lane Detection)
-- Nhận diện đối tượng giao thông (Object Detection)
-- Xử lý luật giao thông (Traffic Rule Processing)
-- Đỗ xe tự động (Autonomous Parking)
-- Streaming video về máy tính để giám sát
+- Lane Detection
+- Traffic Object Recognition
+- Traffic Rule Processing
+- Autonomous Parking
+- Video streaming to a computer for monitoring
 
-## Yêu cầu hệ thống
+## System Requirements
 
-### Phần cứng
+### Hardware
 - NVIDIA Jetson Nano (4GB RAM)
-- Camera USB hoặc Raspberry Pi Camera
-- Pin/nguồn điện di động
-- Khung xe RC (với bộ điều khiển servo và motor)
+- USB Camera or Raspberry Pi Camera
+- Portable power supply/battery
+- RC vehicle chassis (with servo and motor controllers)
 
-### Phần mềm
+### Software
 - JetPack 4.6+ (L4T)
 - Python 3.6+
 - OpenCV 4.5+
-- PyTorch 1.8+ (với CUDA)
+- PyTorch 1.8+ (with CUDA)
 - Ultralytics YOLO
 
-Chi tiết phụ thuộc được liệt kê trong file [requirements.txt](requirements.txt).
+Detailed dependencies are listed in the [requirements.txt](requirements.txt) file.
 
-## Cài đặt
+## Installation
 
 1. Clone repository:
 ```bash
@@ -35,42 +35,42 @@ git clone https://github.com/yourusername/spark.git
 cd spark
 ```
 
-2. Cài đặt các thư viện phụ thuộc:
+2. Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Cấu hình phần cứng:
-   - Kết nối camera với Jetson Nano
-   - Kết nối bộ điều khiển xe với Jetson Nano thông qua cổng serial
+3. Hardware configuration:
+   - Connect the camera to the Jetson Nano
+   - Connect the vehicle controller to the Jetson Nano via serial port
 
-## Sử dụng
+## Usage
 
-### Chạy xe tự hành (trên Jetson Nano)
+### Running the autonomous vehicle (on Jetson Nano)
 
 ```bash
 python main.py
 ```
 
-Tùy chọn:
-- `--camera`: ID của camera (mặc định: 0)
-- `--model`: Đường dẫn đến model YOLO (mặc định: sử dụng model đã cài đặt sẵn)
-- `--width`: Chiều rộng khung hình camera (mặc định: 640)
-- `--height`: Chiều cao khung hình camera (mặc định: 480)
-- `--server`: IP của server streaming (mặc định: 192.168.163.162)
-- `--port`: Port của server streaming (mặc định: 8089)
-- `--no-stream`: Không stream video về laptop
+Options:
+- `--camera`: Camera ID (default: 0)
+- `--model`: Path to YOLO model (default: uses pre-installed model)
+- `--width`: Camera frame width (default: 640)
+- `--height`: Camera frame height (default: 480)
+- `--server`: Streaming server IP (default: 192.168.163.162)
+- `--port`: Streaming server port (default: 8089)
+- `--no-stream`: Disable video streaming to laptop
 
-### Chạy server streaming (trên laptop)
+### Running the streaming server (on laptop)
 
 ```bash
 python streaming_server.py
 ```
 
-Tùy chọn:
-- `--port`: Port để lắng nghe kết nối (mặc định: 8089)
+Options:
+- `--port`: Port to listen for connections (default: 8089)
 
-## Cấu trúc mã nguồn
+## Code Structure
 
 ```
 SPARK/
@@ -106,47 +106,47 @@ SPARK/
         └── lane_detection_config.py 
 ```
 
-## Luồng hoạt động
+## Workflow
 
-1. Camera thu nhận hình ảnh
-2. Phát hiện làn đường để xác định lộ trình
-3. Phát hiện đối tượng để nhận diện biển báo, vật cản, người đi bộ
-4. Xử lý luật giao thông để đưa ra quyết định
-5. Điều khiển xe (tốc độ và góc lái) dựa trên các quyết định
-6. (Tùy chọn) Truyền video đã xử lý về laptop để giám sát
+1. Camera captures images
+2. Lane detection determines the route
+3. Object detection identifies signs, obstacles, pedestrians
+4. Traffic rule processing makes decisions
+5. Vehicle control (speed and steering angle) based on decisions
+6. (Optional) Processed video is transmitted to a laptop for monitoring
 
 ## Network Streaming
 
-Hệ thống hỗ trợ streaming video đã xử lý từ Jetson Nano về laptop để giám sát:
+The system supports streaming processed video from the Jetson Nano to a laptop for monitoring:
 
-1. Trên laptop, chạy `streaming_server.py` để tạo server nhận stream
-2. Trên Jetson, chạy `main.py` để kết nối và gửi stream
-3. Video hiển thị trên laptop sẽ bao gồm thông tin đã xử lý (làn đường, đối tượng phát hiện)
+1. On the laptop, run `streaming_server.py` to create a server that receives the stream
+2. On the Jetson, run `main.py` to connect and send the stream
+3. The video displayed on the laptop will include processed information (lanes, detected objects)
 
-## Điều khiển thủ công
+## Manual Control
 
-Trong khi chạy, bạn có thể sử dụng các phím sau:
-- `q`: Thoát chương trình
-- `b`: Phanh khẩn cấp
-- `r`: Tiếp tục chạy với tốc độ mặc định
+While running, you can use the following keys:
+- `q`: Exit program
+- `b`: Emergency brake
+- `r`: Continue running at default speed
 
-## Cấu hình nâng cao
+## Advanced Configuration
 
-Các thông số và cấu hình chi tiết có thể điều chỉnh trong các file:
-- `lane_detection_config.py`: Thông số nhận diện làn đường
-- `traffic_rule_processor.py`: Xử lý luật giao thông
-- `car_controller.py`: Điều khiển phần cứng
+Detailed parameters and configurations can be adjusted in these files:
+- `lane_detection_config.py`: Lane detection parameters
+- `traffic_rule_processor.py`: Traffic rule processing
+- `car_controller.py`: Hardware control
 
-## Các vấn đề thường gặp
+## Common Issues
 
-1. **Không kết nối được với xe**: Kiểm tra lại cổng serial trong `car_controller.py`
-2. **Nhận diện làn đường không chính xác**: Điều chỉnh thông số trong `lane_detection_config.py`
-3. **Lỗi streaming**: Kiểm tra IP và port, đảm bảo cả hai thiết bị đều trong cùng mạng
+1. **Cannot connect to the vehicle**: Check the serial port in `car_controller.py`
+2. **Inaccurate lane detection**: Adjust parameters in `lane_detection_config.py`
+3. **Streaming errors**: Check IP and port, ensure both devices are on the same network
 
-## Đóng góp
+## Contributions
 
-Mọi đóng góp đều được hoan nghênh. Vui lòng tạo issue hoặc pull request.
+All contributions are welcome. Please create an issue or submit a pull request.
 
-## Giấy phép
+## License
 
 MIT License

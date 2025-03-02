@@ -31,8 +31,8 @@ Detailed dependencies are listed in the [requirements.txt](requirements.txt) fil
 
 1. Clone repository:
 ```bash
-git clone https://github.com/yourusername/spark.git
-cd spark
+git clone https://github.com/team-SPARK-BFMC2024/Brain.git
+cd Brain
 ```
 
 2. Install dependencies:

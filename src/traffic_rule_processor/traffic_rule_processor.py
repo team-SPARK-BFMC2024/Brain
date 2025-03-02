@@ -9,17 +9,16 @@ class TrafficRuleProcessor:
             'round-about-sign', 'stop-line', 'stop-sign', 'traffic-light',
             'traffic-green', 'traffic-red', 'traffic-yellow'
         ]
-        # Cập nhật tốc độ cho các tình huống khác nhau
         self.SPEEDS = {
             'highway': {
-                'normal': 250,    # Tăng từ 50 lên 250
-                'caution': 200,   # Tăng từ 45 lên 200
-                'slow': 180       # Tăng từ 40 lên 180
+                'normal': 250,    
+                'caution': 200,   
+                'slow': 180       
             },
             'city': {
-                'normal': 200,    # Tăng từ 30 lên 200
-                'caution': 180,   # Tăng từ 25 lên 180
-                'slow': 150       # Tăng từ 20 lên 150
+                'normal': 200,    
+                'caution': 180,   
+                'slow': 150       
             }
         }
 

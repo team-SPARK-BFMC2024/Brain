@@ -3,9 +3,9 @@ import logging
 import argparse
 import os
 import socket
-from lane_detection.lane_detection import LaneDetection
-from lane_detection.lane_keeping import LaneKeeping
-from system_runner.system_runner import run_autonomous_system
+from src.lane_detection.lane_detection import LaneDetection
+from src.lane_detection.lane_keeping import LaneKeeping
+from src.system_runner.system_runner import run_autonomous_system
 
 # Thiết lập logging
 logging.basicConfig(level=logging.INFO)

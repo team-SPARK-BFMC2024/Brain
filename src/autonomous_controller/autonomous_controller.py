@@ -1,10 +1,10 @@
-from car_controller.car_controller import CarController
-from object_detector.object_detector import ObjectDetector
-from lane_analyzer.lane_analyzer import LaneAnalyzer
-from traffic_rule_processor.traffic_rule_processor import TrafficRuleProcessor
-from parking_handler.parking_handler import ParkingHandler, ParkingStates
-from utils.vehicle_state import VehicleState
-from utils.lane_detection_config import LaneDetectionConfig
+from src.car_controller.car_controller import CarController
+from src.object_detector.object_detector import ObjectDetector
+from src.lane_analyzer.lane_analyzer import LaneAnalyzer
+from src.traffic_rule_processor.traffic_rule_processor import TrafficRuleProcessor
+from src.parking_handler.parking_handler import ParkingHandler, ParkingStates
+from src.utils.vehicle_state import VehicleState
+from src.utils.lane_detection_config import LaneDetectionConfig
 import time
 
 class AutonomousController:

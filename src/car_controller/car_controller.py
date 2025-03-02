@@ -1,6 +1,6 @@
 import serial
 import time
-from utils.vehicle_state import VehicleState
+from src.utils.vehicle_state import VehicleState
 
 class CarController:
     def __init__(self, port='/dev/ttyACM0', baudrate=115200):

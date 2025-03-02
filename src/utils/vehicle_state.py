@@ -2,7 +2,7 @@ import time
 from enum import Enum
 
 # Import lớp ParkingStates từ parking_handler
-from parking_handler.parking_handler import ParkingStates
+from src.parking_handler.parking_handler import ParkingStates
 
 class VehicleState:
     def __init__(self):

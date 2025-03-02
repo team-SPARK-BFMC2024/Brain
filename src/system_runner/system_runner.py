@@ -5,8 +5,8 @@ import logging
 import socket
 import pickle
 import struct
-from autonomous_controller.autonomous_controller import AutonomousController
-from parking_handler.parking_handler import ParkingStates
+from src.autonomous_controller.autonomous_controller import AutonomousController
+from src.parking_handler.parking_handler import ParkingStates
 
 def connect_to_server(server_ip, server_port, max_retries=5):
     """Connect to the server on the laptop"""

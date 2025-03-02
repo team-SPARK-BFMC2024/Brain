@@ -1,12 +1,46 @@
-python3-flask=2.2.2*
-python3-flask-socketio=5.3.2*
-python3-flask-cors=3.0.10*
-python3-psutil=5.9.4*
-python3-picamera2
-python3-libcamera
-python3-eventlet=0.33.1*
-python3-twisted=22.4.0*
-python3-cryptography=38.0.4*
-python3-opencv
-python3-serial
-xdg-utils
+# Các thư viện cơ bản
+numpy>=1.19.0
+scipy>=1.4.1
+matplotlib>=3.2.2
+Pillow>=8.0.0
+
+# OpenCV cho xử lý hình ảnh
+opencv-python>=4.5.1
+opencv-contrib-python>=4.5.1
+
+# PyTorch và CUDA (xác nhận phiên bản phù hợp với Jetson Nano)
+--extra-index-url https://download.pytorch.org/whl/cu113
+torch>=1.8.0
+torchvision>=0.9.0
+
+# Ultralytics YOLO
+ultralytics>=8.0.0
+
+# PySerial để giao tiếp với vi điều khiển
+pyserial>=3.5
+
+# Phân tích dữ liệu
+pandas>=1.1.4
+
+# Các tiện ích cần thiết khác
+tqdm>=4.64.0
+PyYAML>=6.0
+requests>=2.27.1
+psutil>=5.9.0
+seaborn>=0.11.0
+
+# Xử lý đa luồng và mạng
+threading
+socket
+
+# Tiện ích hệ thống
+argparse>=1.4.0
+logging
+time
+
+# Đọc và xử lý cấu hình
+configparser>=5.2.0
+
+# Xử lý dữ liệu
+pickle
+struct

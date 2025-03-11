@@ -662,26 +662,26 @@ class LaneDetection:
                     break
 
         # Check if these 2 lanes are "correct" (if they are near) (else keep only one lane)
-        # if left and right:
+        if left and right:
 
-        #     left_top, left_bot = self.calculate_lane_boundaries(left)
-        #     right_top, right_bot = self.calculate_lane_boundaries(right)
+             left_top, left_bot = self.calculate_lane_boundaries(left)
+             right_top, right_bot = self.calculate_lane_boundaries(right)
 
-        #     top_dif = (right_top - left_top) / 2
-        #     bot_dif = (right_bot - left_bot) / 2
+             top_dif = (right_top - left_top) / 2
+             bot_dif = (right_bot - left_bot) / 2
 
-        #     # if lanes width difference is small/big delete a lane
-        #     if not (
-        #         top_dif > self.min_top_width_dif
-        #         and top_dif < self.max_top_width_dif
-        #         and bot_dif > self.min_bot_width_dif
-        #         and bot_dif < self.max_bot_width_dif
-        #     ):
-        #         # keep lane with most peaks
-        #         if len(left) > len(right):
-        #             right = []
-        #         else:
-        #             left = []
+             # if lanes width difference is small/big delete a lane
+             if not (
+                 top_dif > self.min_top_width_dif
+                 and top_dif < self.max_top_width_dif
+                 and bot_dif > self.min_bot_width_dif
+                 and bot_dif < self.max_bot_width_dif
+             ):
+                 # keep lane with most peaks
+                 if len(left) > len(right):
+                     right = []
+                 else:
+                     left = []
 
         return left, right
 

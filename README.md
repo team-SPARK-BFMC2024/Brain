@@ -1,16 +1,20 @@
-# SPARK - Self-driving Platform for Autonomous Research and Knowledge
+# 🚗 SPARK - Self-driving Platform for Autonomous Research and Knowledge
 
-SPARK is a self-driving platform designed for researching and developing autonomous driving algorithms on the Jetson Nano. The system combines lane detection, object recognition, and traffic rule processing to control the vehicle autonomously.
+SPARK is a self-driving platform designed for researching and developing autonomous driving algorithms on the Jetson Nano. The system combines lane detection, object recognition, path planning, and traffic rule processing to control the vehicle autonomously.
 
-## Key Features
+## ✨ Key Features
 
-- Lane Detection
-- Traffic Object Recognition
-- Traffic Rule Processing
-- Autonomous Parking
+- Lane detection and keeping
+- Traffic object recognition
+- Traffic rule processing
+- Path planning and navigation
+- Autonomous parking
+- Multiple operation modes (AUTO, LEGACY, MANUAL, STOP)
+- Automatic speed adjustment during turns
+- Web interface for control and monitoring
 - Video streaming to a computer for monitoring
 
-## System Requirements
+## 🔧 System Requirements
 
 ### Hardware
 - NVIDIA Jetson Nano (4GB RAM)
@@ -27,7 +31,7 @@ SPARK is a self-driving platform designed for researching and developing autonom
 
 Detailed dependencies are listed in the [requirements.txt](requirements.txt) file.
 
-## Installation
+## 📥 Installation
 
 1. Clone repository:
 ```bash
@@ -44,12 +48,12 @@ pip install -r requirements.txt
    - Connect the camera to the Jetson Nano
    - Connect the vehicle controller to the Jetson Nano via serial port
 
-## Usage
+## 🚀 Usage
 
 ### Running the autonomous vehicle (on Jetson Nano)
 
 ```bash
-python main.py
+python main3.py
 ```
 
 Options:
@@ -57,96 +61,136 @@ Options:
 - `--model`: Path to YOLO model (default: uses pre-installed model)
 - `--width`: Camera frame width (default: 640)
 - `--height`: Camera frame height (default: 480)
-- `--server`: Streaming server IP (default: 192.168.163.162)
-- `--port`: Streaming server port (default: 8089)
-- `--no-stream`: Disable video streaming to laptop
+- `--web-port`: Web interface port (default: 8088)
+- `--ws-port`: WebSocket server port (default: 8765)
+- `--no-web`: Disable web interface
 
-### Running the streaming server (on laptop)
+### Running the WebSocket server separately (for telemetry)
 
 ```bash
-python streaming_server.py
+python websocket_server.py --port 8090
 ```
 
-Options:
-- `--port`: Port to listen for connections (default: 8089)
+## 🎮 Operation Modes
 
-## Code Structure
+The system supports multiple operation modes:
+
+- **AUTO**: Full autonomous driving with path planning
+- **LEGACY**: Lane following without path planning
+- **MANUAL**: Remote control operation
+- **STOP**: Safely halts the vehicle
+
+Modes can be switched via the web interface or using keyboard shortcuts in the monitoring window:
+- `a`: Switch to AUTO mode
+- `l`: Switch to LEGACY mode
+- `s`: Switch to STOP mode
+
+## 🏎️ Speed Control
+
+The system automatically adjusts speed based on turning angle:
+- Normal driving: 25 cm/s (250 mm/s)
+- During turns: Reduces to as low as 10 cm/s (100 mm/s)
+
+This helps ensure safe navigation around corners and during complex maneuvers.
+
+## 📁 Code Structure
 
 ```
 SPARK/
-├── main.py                 
-├── monitoring    
-├── requirements.txt  
-├── config.ini      
-├── README.md   
-├── Project status
-    ├── project status 1
-    ├── project status 2
-    ├── project status 3
-    ├── qualification             
-└── src/                    
-    ├── system_runner.py    
-    ├── car_controller/     
-    │   └── car_controller.py 
-    ├── lane_analyzer/     
-    │   └── lane_analyzer.py 
-    ├── lane_detection/    
-    │   ├── lane_detection.py 
-    │   └── lane_keeping.py 
-    ├── object_detector/   
-    │   └── object_detector.py
-    ├── traffic_rule_processor/ 
-    │   └── traffic_rule_processor.py 
-    ├── parking_handler/    
-    │   └── parking_handler.py
+├── main.py              # Legacy entry point
+├── main2.py             # Alternative entry point
+├── main3.py             # Main entry point with web interface
+├── websocket_server.py  # WebSocket server for telemetry
+├── monitoring           # Project documentation
+├── requirements.txt     # Dependencies
+├── config.ini           # Configuration parameters
+├── README.md            # This file
+├── Project status       # Progress reports
+└── src/                 # Source code
     ├── autonomous_controller/
-    │   └── autonomous_controller.py 
-    └── utils/              
-        ├── vehicle_state.py 
-        └── lane_detection_config.py 
+    │   └── autonomous_controller.py  # Main controller
+    ├── car_controller/
+    │   └── car_controller.py         # Hardware control
+    ├── lane_analyzer/
+    │   └── lane_analyzer.py          # Lane type detection
+    ├── lane_detection/
+    │   ├── lane_detection.py         # Lane detection
+    │   └── lane_keeping.py           # Lane following
+    ├── mode_controller/
+    │   └── mode_controller.py        # Operation mode management
+    ├── object_detector/
+    │   └── object_detector.py        # Object detection (YOLO)
+    ├── parking_handler/
+    │   └── parking_handler.py        # Automated parking
+    ├── path_planning/                # Navigation components
+    │   ├── path_planner.py
+    │   ├── path_controller.py
+    │   ├── imu_integration.py
+    │   └── imu_processor.py
+    ├── system_runner/
+    │   └── system_runner.py          # Main execution loop
+    ├── traffic_rule_processor/
+    │   └── traffic_rule_processor.py # Traffic rule decisions
+    ├── utils/
+    │   ├── vehicle_state.py          # Vehicle state tracking
+    │   └── lane_detection_config.py  # Lane detection parameters
+    └── web_api/
+        └── web_api_server.py         # Web interface API
 ```
 
-## Workflow
+## ⚙️ Workflow
 
 1. Camera captures images
 2. Lane detection determines the route
 3. Object detection identifies signs, obstacles, pedestrians
-4. Traffic rule processing makes decisions
-5. Vehicle control (speed and steering angle) based on decisions
-6. (Optional) Processed video is transmitted to a laptop for monitoring
+4. Path planning calculates optimal trajectory (in AUTO mode)
+5. Traffic rule processing makes decisions
+6. Vehicle control (speed and steering angle) based on decisions
+7. Web interface and video stream provide monitoring and control
 
-## Network Streaming
+## 🌐 Web Interface
 
-The system supports streaming processed video from the Jetson Nano to a laptop for monitoring:
+The system includes a web interface for monitoring and control:
 
-1. On the laptop, run `streaming_server.py` to create a server that receives the stream
-2. On the Jetson, run `main.py` to connect and send the stream
-3. The video displayed on the laptop will include processed information (lanes, detected objects)
+1. Access the interface at `http://<jetson-ip-address>:8088`
+2. Monitor vehicle telemetry and camera feed
+3. Switch between operation modes
+4. Control the vehicle manually if needed
 
-## Manual Control
+## 📡 Network Streaming
 
-While running, you can use the following keys:
+The system supports streaming processed video for monitoring:
+
+1. On a monitoring computer, run `websocket_server.py` to create a server
+2. The video displayed will include processed information (lanes, detected objects, path planning)
+
+## 🕹️ Manual Control
+
+While running, you can use the following keys in the monitoring window:
 - `q`: Exit program
 - `b`: Emergency brake
 - `r`: Continue running at default speed
 
-## Advanced Configuration
+## ⚙️ Advanced Configuration
 
 Detailed parameters and configurations can be adjusted in these files:
+- `config.ini`: Main configuration parameters
 - `lane_detection_config.py`: Lane detection parameters
 - `traffic_rule_processor.py`: Traffic rule processing
 - `car_controller.py`: Hardware control
+- `path_planner.py`: Path planning parameters
 
-## Common Issues
+## ❓ Common Issues
 
 1. **Cannot connect to the vehicle**: Check the serial port in `car_controller.py`
 2. **Inaccurate lane detection**: Adjust parameters in `lane_detection_config.py`
-3. **Streaming errors**: Check IP and port, ensure both devices are on the same network
+3. **Web interface unavailable**: Ensure the correct IP address is being used
+4. **Path planning errors**: Review map file in path_planning/maps directory
 
-## Contributions
+## 👥 Contributions
 
 All contributions are welcome. Please create an issue or submit a pull request.
 
-## License
+## 📜 License
 
 MIT License

@@ -8,40 +8,6 @@ from scipy.stats import norm
 
 
 class LaneKeeping:
-    """
-    This class implements the lane keeping algorithm by calculating steering angles from the detected lines.
-
-    Attributes:
-        log (logging object):
-            Logic logger, child of root logger
-        config (configparser object):
-            Open configuration file of the whole project
-        width (integer):
-            The width of the input image
-        height (integer):
-            The height of the input image
-        angle (float):
-            Steering angle
-        last_angle (float):
-            Previous steering angle
-        steer_value_list (list):
-            Store last k steering values
-        median_constant (integer):
-            Num of the last steering angles to be saved
-        print_desire_lane (bool):
-            Visualization of the desired lane
-        bottom_width (integer):
-            Bottom width difference of left and right lane div 2
-        top_width (integer)
-            Top width difference of left and right lane div 2
-        slices (integer):
-            Number of slices from the lane detection
-        bottom_row_index (integer):
-            Height of the first histogram
-        top_row_index (integer) :
-            Height of the last histogram
-    """
-
     def __init__(self, width, height, logger, camera):
 
         self.width = width
@@ -113,7 +79,6 @@ class LaneKeeping:
         sf = 1 - cdf
         self.sf = (sf - sf[-1]) / (sf[0] - sf[-1])
 
-    # ------------------------------------------------------------------------------#
 
     def choose_405(self):
         self.bottom_perc = float(self.config["LANE_DETECT"].get("bottom_perc_405"))
@@ -168,23 +133,9 @@ class LaneKeeping:
         self.bottom_width = int(self.config["LANE_KEEPING"].get("bottom_width_455"))
         self.top_width = int(self.config["LANE_KEEPING"].get("top_width_455"))
 
-    # ------------------------------------------------------------------------------#
+    
 
     def desired_lane(self, left_fit, right_fit, polynomial=2):
-        """Caclulates multiple points on the desired lane that the car should follow.
-
-        Parameters
-        ----------
-        left_fit : array
-            The left polyfit
-        right_fit : array
-            The right polyfit
-
-        Returns
-        -------
-        array
-            The desired lane points
-        """
 
         if left_fit is not None and right_fit is not None:
             # BOTH LANES (Desired lane is the middle lane of those lane)
@@ -262,17 +213,6 @@ class LaneKeeping:
         return desire_lane.astype(np.int32)
 
     def visualize_desire_lane(self, frame, plot_x, bgr_colour=(50, 205, 50)):
-        """Visualization of the desired lane that the car should be following.
-
-        Parameters
-        ----------
-        frame : array
-            input image
-        plot_x : array
-            having the x values of the points of the desired lane.
-        bgr_colour : tuple
-            An optional parameter representing the color of the desire lane.
-        """
 
         if frame is not None:
 
@@ -287,18 +227,6 @@ class LaneKeeping:
                 cv2.line(frame, prev, new, bgr_colour, thickness=3)
 
     def get_error(self, desired):
-        """Calculates the error between the setpoint (desired lane) and the measured lane position (the actual lane position of the vehicle)
-
-        Parameters
-        ----------
-        desired : array
-            The points of the desired lane
-
-        Returns
-        -------
-        float
-            calculated error
-        """
 
         if len(desired) != 0:
             weighted_mean = np.average(desired, weights=[*self.get_error_weights])
@@ -310,7 +238,6 @@ class LaneKeeping:
             return error
         return 0
 
-    # ------------------------------------------------------------------------------#
     def change_lane_maneuver(self, lanes_detection, direction, overtake_type, smoothing_iterations=None):
 
         destination = {"right": 1, "left": -1}
@@ -500,38 +427,13 @@ class LaneKeeping:
             self.smoothing_iterations,
         )
 
-    # ------------------------------------------------------------------------------#
 
     def pid_controller(self, left, right, frame=None):
-        """Performs the angle calculation based on the left and right polyfits. Steps :
-        1) create a polyfit for the desired lane that the car should follow.
-        2) extract the points of that lane and the lane that the car currently follows.
-        3) find the error of those two points (width diffrence in the same height)
-        4) adjust steering angle based on the error and PID controller's parameters
-
-        Parameters
-        ----------
-        left : array
-            Left polyfit
-        right : array
-            Right polyfit
-        frame : array
-            The frame with the lines
-
-        Returns
-        -------
-        float
-            calculated angle
-        float
-            calculated error
-        array
-            The frame with the desire lane
-        """
 
         if left is None and right is None:
             angle = self.last_angle
             error = 0
-            self.log.warning("No lanes found")
+            # self.log.warning("No lanes found")
         else:
             desired_lane = self.desired_lane(left, right)
 
@@ -551,10 +453,6 @@ class LaneKeeping:
         return angle, error, frame
 
     def fix_angle(self):
-        """Fixes the angle so the car changes its position smoothly.
-        - simple PD control on the angle (not activated now)
-        - rolling average on the last N calculated angles (activated)
-        """
 
         self.steer_value_list.insert(0, self.angle)
         if len(self.steer_value_list) == self.median_constant:
@@ -565,24 +463,7 @@ class LaneKeeping:
         self.last_angle = self.angle
 
     def lane_keeping(self, lanes_detection):
-        """Performs the pipeline for the lanekeeping.
-        1) Perform Lane Detection
-        2) Calculate the steering angle for lane keeping
-        3) Smooth the angle
-
-        Parameteres
-        -----------
-        lanes_detection : dictionary
-            Result of lane detection : frame, left_coef, right_coef
-
-        Returns
-        -------
-        float
-            calculated steering angle
-        array
-            lane keeping output image
-        """
-
+    
         frame = lanes_detection["frame"]
         left_coef = lanes_detection["left_coef"]
         right_coef = lanes_detection["right_coef"]

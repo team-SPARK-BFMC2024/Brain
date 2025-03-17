@@ -29,9 +29,9 @@ class PathPlanner:
         if map_path is None:
             # Try to locate map file in common locations
             possible_paths = [
-                os.path.join(os.path.dirname(__file__), "maps", "converted_graph.graphml"),
-                os.path.join(os.path.dirname(__file__), "converted_graph.graphml"),
-                "converted_graph.graphml"
+                os.path.join(os.path.dirname(__file__), "maps", "src/path_planning/maps/track_test_node.graphml"),
+                os.path.join(os.path.dirname(__file__), "track_test_node.graphml"),
+                "track_test_node.graphml"
             ]
             
             for path in possible_paths:
@@ -50,8 +50,8 @@ class PathPlanner:
         # Define special nodes
         self.intersection_nodes = ['19', '47', '59', '82', '83']
         self.central_nodes = ['20', '48']
-        self.roundabout_entry_nodes = []  # Fill with actual node IDs if needed
-        self.roundabout_exit_nodes = []   # Fill with actual node IDs if needed
+        self.roundabout_entry_nodes = []  
+        self.roundabout_exit_nodes = [] 
         
         # Path tracking parameters
         self.current_path = []
@@ -279,7 +279,7 @@ class PathPlanner:
         next_node = self.current_path[next_idx] if next_idx < len(self.current_path) else None
         
         if next_node is None:
-            return 0  # No need to turn if we're at the end
+            return 0 
         
         # Get coordinates
         current_x = float(self.G.nodes[current_node]['x'])

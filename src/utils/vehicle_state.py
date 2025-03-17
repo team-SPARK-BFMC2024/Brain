@@ -1,72 +1,72 @@
 import time
 from enum import Enum
 
-# Import lớp ParkingStates từ parking_handler
+# Import ParkingStates class from parking_handler
 from src.parking_handler.parking_handler import ParkingStates
 
 class VehicleState:
     def __init__(self):
-        # Thuộc tính cơ bản
+        # Basic attributes
         self.current_speed = 0
         self.target_speed = 0
         self.current_lane_type = 'dashed'
         self.steering_angle = 0
-        self.zone_type = 'city'  # 'city' hoặc 'highway'
+        self.zone_type = 'city'  # 'city' or 'highway'
         
-        # Trạng thái giao thông
+        # Traffic state
         self.stop_timer = None
         self.last_state = None
         self.in_roundabout = False
         
-        # Thuộc tính cho quá trình đỗ xe
+        # Parking attributes
         self.parking_mode = False
-        self.parking_state = None  # Sử dụng ParkingStates enum
+        self.parking_state = None  # Uses ParkingStates enum
         self.target_spot = None
-        self.current_angle = 0  # Góc hiện tại của xe (độ)
-        self.distance_traveled = 0  # Khoảng cách di chuyển trong chế độ đỗ xe (mm)
+        self.current_angle = 0  # Current vehicle angle (degrees)
+        self.distance_traveled = 0  # Distance traveled in parking mode (mm)
         
-        # Số liệu thống kê
-        self.total_distance = 0  # Tổng khoảng cách di chuyển (m)
-        self.start_time = time.time()  # Thời gian bắt đầu (giây)
+        # Statistics - for tracking overall performance
+        self.total_distance = 0  # Total distance traveled (m)
+        self.start_time = time.time()  # Start time (seconds)
         
-        # Biến theo dõi thời gian
+        # Time tracking - for internal calculations
         self.last_update_time = time.time()
         
     def update_distance(self, delta_time_ms):
         """
-        Cập nhật khoảng cách di chuyển dựa trên tốc độ hiện tại
+        Update distance traveled based on current speed
         
-        Phương thức này theo dõi hai loại khoảng cách:
-        1. total_distance: Tổng khoảng cách di chuyển (m) - không phụ thuộc vào trạng thái đỗ xe
-        2. distance_traveled: Khoảng cách di chuyển trong chế độ đỗ xe (mm) - chỉ được cập nhật khi đang trong chế độ đỗ xe
+        This method tracks two types of distance:
+        1. total_distance: Total distance traveled (m) - independent of parking state
+        2. distance_traveled: Distance traveled in parking mode (mm) - only updated when in parking mode
         
         Args:
-            delta_time_ms: Thời gian trôi qua tính bằng mili giây
+            delta_time_ms: Time elapsed in milliseconds
         """
         try:
-            # Kiểm tra tham số đầu vào
+            # Check input parameter to avoid division by zero or negative values
             if delta_time_ms <= 0:
                 print(f"Warning: Invalid delta_time value: {delta_time_ms}")
                 return
                 
-            # Chuyển đổi thời gian từ mili giây sang giây để tính toán
+            # Convert time from milliseconds to seconds for calculations
             delta_time_s = delta_time_ms / 1000.0
             
-            # Tính toán khoảng cách di chuyển từ tốc độ (mm/s) và thời gian (s)
-            # Sử dụng abs(speed) vì khoảng cách là độ lớn, không phụ thuộc vào hướng
-            distance_m = abs(self.current_speed) * delta_time_s / 1000.0  # Chuyển từ mm/s sang m/s
+            # Calculate distance traveled from speed (mm/s) and time (s)
+            # Use abs(speed) because distance is magnitude, not dependent on direction
+            distance_m = abs(self.current_speed) * delta_time_s / 1000.0  # Convert from mm/s to m/s
             
-            # Cập nhật tổng khoảng cách di chuyển (m)
+            # Update total distance traveled (m)
             self.total_distance += distance_m
             
-            # Nếu đang trong chế độ đỗ xe, cập nhật khoảng cách di chuyển riêng (mm)
+            # If in parking mode, update the specific distance traveled (mm)
             if self.parking_state is not None:
-                # Khoảng cách trong chế độ đỗ xe được tính bằng mm
-                # Không chia cho 1000 vì current_speed đã là mm/s
+                # Distance in parking mode is calculated in mm
+                # No division by 1000 because current_speed is already mm/s
                 distance_mm = abs(self.current_speed) * delta_time_s
                 self.distance_traveled += distance_mm
                 
-            # Cập nhật thời gian cuối cùng
+            # Update last time for next calculation
             self.last_update_time = time.time()
             
         except Exception as e:
@@ -74,7 +74,7 @@ class VehicleState:
         
     def reset_parking_state(self):
         """
-        Reset trạng thái đỗ xe và các biến liên quan
+        Reset parking state and related variables
         """
         self.parking_mode = False
         self.parking_state = None

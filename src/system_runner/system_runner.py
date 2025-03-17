@@ -2,222 +2,172 @@ import time
 import cv2
 import numpy as np
 import logging
+import threading
 import socket
-import pickle
-import struct
 from src.autonomous_controller.autonomous_controller import AutonomousController
 from src.parking_handler.parking_handler import ParkingStates
+from src.mode_controller.mode_controller import ModeController, OperationMode
+from src.path_planning.path_controller import PathController
 
-def connect_to_server(server_ip, server_port, max_retries=5):
-    """Connect to the server on the laptop"""
-    client_socket = None
-    retry_count = 0
-    
-    while retry_count < max_retries:
-        try:
-            # Create new socket for each connection attempt
-            if client_socket:
-                client_socket.close()
-                
-            client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            client_socket.settimeout(5)  # 5 second timeout for connection
-            
-            print(f"Attempt {retry_count+1}/{max_retries}: Connecting to server at {server_ip}:{server_port}")
-            client_socket.connect((server_ip, server_port))
-            print(f"Connection successful!")
-            client_socket.settimeout(30)  # Longer timeout for normal operation
-            return client_socket
-            
-        except socket.timeout:
-            print(f"Connection timed out")
-            retry_count += 1
-            if retry_count < max_retries:
-                print(f"Retrying in 3 seconds...")
-                time.sleep(3)
-            else:
-                print(f"Failed to connect after {max_retries} attempts")
-                return None
-                
-        except ConnectionRefusedError:
-            print(f"Connection refused. Make sure server is running on {server_ip}:{server_port}")
-            retry_count += 1
-            if retry_count < max_retries:
-                print(f"Retrying in 3 seconds...")
-                time.sleep(3)
-            else:
-                print(f"Failed to connect after {max_retries} attempts")
-                return None
-                
-        except Exception as e:
-            print(f"Connection error: {e}")
-            retry_count += 1
-            if retry_count < max_retries:
-                print(f"Retrying in 3 seconds...")
-                time.sleep(3)
-            else:
-                print(f"Failed to connect after {max_retries} attempts")
-                return None
-
-def send_frame(client_socket, frame):
-    """Send a frame to the server"""
-    try:
-        if client_socket:
-            # Reduce frame size for better streaming performance
-            frame_resized = cv2.resize(frame, (640, 480))
-            _, encoded_frame = cv2.imencode('.jpg', frame_resized, [cv2.IMWRITE_JPEG_QUALITY, 80])
-            data = pickle.dumps(encoded_frame)
-            
-            # Pack frame size and send
-            message_size = struct.pack("L", len(data))
-            client_socket.sendall(message_size + data)
-            return True
-    except (socket.error, BrokenPipeError, ConnectionResetError) as e:
-        print(f"Connection error: {e}")
-        return False
-    except Exception as e:
-        print(f"Error sending frame: {e}")
-        return False
-    return False
-
-def run_autonomous_system(cap, lk, ld, server_ip=None, server_port=None, model_path=None):
+def run_autonomous_system(cap, lk, ld, video_streamer=None, server_ip=None, server_port=None, model_path=None):
     """
-    Hàm chạy hệ thống xe tự hành, hiển thị một khung hình duy nhất với cả lane detection và object detection
+    Main function to run the autonomous system with support for different modes.
     
     Args:
         cap: Camera capture object
         lk: LaneKeeping object
         ld: LaneDetection object
-        server_ip: IP address của server nhận stream (nếu None thì không stream)
-        server_port: Port của server nhận stream
-        model_path: Đường dẫn đến model YOLO (nếu None sẽ sử dụng ObjectDetector mặc định)
+        server_ip: IP address for streaming (optional)
+        server_port: Port for streaming (optional)
+        model_path: Path to the object detection model (optional)
     """
     frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     
-    # Tạo cửa sổ hiển thị
+    # Create the main display window
     cv2.namedWindow("Autonomous System", cv2.WINDOW_NORMAL)
     
-    print("Đang khởi động hệ thống...")
-    print("Nhấn 'q' để thoát chương trình")
+    print("System initializing...")
+    print("Press 'q' to exit the program")
     
-    # Khởi tạo controller
+    # Initialize mode controller
+    mode_controller = ModeController(port=8099)
+    mode_controller.start()
+    
+    # Initialize autonomous controller
     controller = AutonomousController(frame_width, frame_height)
     
-    # Không cần sử dụng model_path nữa vì chúng ta chỉ dùng ObjectDetector mặc định
-    print("Using default system ObjectDetector")
+    # Initialize path planning controller
+    path_controller = PathController()
     
-    # Khởi tạo kết nối socket nếu cần thiết
-    client_socket = None
+    # Initialize streaming socket if needed
+    stream_socket = None
     if server_ip and server_port:
-        print(f"Attempting to connect to streaming server at {server_ip}:{server_port}")
-        client_socket = connect_to_server(server_ip, server_port)
-        if not client_socket:
-            print("Could not connect to server. Will continue without streaming.")
+        try:
+            stream_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            print(f"Streaming enabled to {server_ip}:{server_port}")
+        except Exception as e:
+            print(f"Error setting up streaming socket: {e}")
+            stream_socket = None
     
-    # Các biến điều khiển
+    # Control variables
     STOP_TIMEOUT = 1.0
     DEFAULT_SPEED = controller.car.base_speed
     last_stop_time = 0
     last_process_time = time.time()
     last_time = time.time()
     
-    # Biến điều khiển mới tối ưu cho Jetson
-    frame_count = 0  # Chỉ dùng để theo dõi số frame đã xử lý
-    
-    # Thêm biến đếm để skip frame cho lane detection
-    lane_frame_counter = 0  # Dùng để đếm và skip 1 frame sau khi đã xử lý 1 frame
-    
-    # Lưu giữ giá trị lane_fps giữa các frames để tránh nhảy về 0
+    # Performance tracking variables
+    frame_count = 0
+    lane_frame_counter = 0
     last_lane_fps = 0
     last_obj_fps = 0
     
-    # Cờ hiệu khi hệ thống đã sẵn sàng
+    # IMU data handling variables
+    imu_data_buffer = ""
+    last_imu_update = time.time()
+    
+    # System initialization
     system_ready = False
-    initialization_frames = 10  # Số frame kiểm tra trước khi khởi động xe
+    initialization_frames = 10
+    
+    # Set up mode change handler
+    def handle_mode_change(new_mode):
+        nonlocal system_ready
+        
+        if new_mode == OperationMode.STOP:
+            controller.car.brake()
+            path_controller.stop_navigation()
+            print("Vehicle stopped")
+            
+        elif new_mode == OperationMode.AUTO:
+            # Start path planning navigation
+            if not path_controller.navigation_started:
+                path_controller.start_navigation()
+            controller.car.set_speed(DEFAULT_SPEED)
+            print("Auto mode activated - following planned path")
+            
+        elif new_mode == OperationMode.LEGACY:
+            # Traditional lane following without path planning
+            path_controller.stop_navigation()
+            controller.car.set_speed(DEFAULT_SPEED)
+            print("Legacy mode activated - following lanes")
+            
+        elif new_mode == OperationMode.MANUAL:
+            # Stop autonomous functions but leave vehicle responsive
+            path_controller.stop_navigation()
+            print("Manual mode activated - awaiting control commands")
+    
+    # Register the mode change handler
+    mode_controller.set_mode_change_callback(handle_mode_change)
     
     try:
-        # Khởi tạo xe
+        # Initialize the vehicle
         controller.car.set_power_state(30)
         time.sleep(0.5)
         
-        # Đảm bảo xe đứng yên lúc khởi động
+        # Ensure the vehicle is stopped at startup
         controller.car.brake()
         
-        # Hiển thị thông báo đang tải model
+        # Display loading message
         loading_frame = np.zeros((frame_height, frame_width, 3), dtype=np.uint8)
-        cv2.putText(loading_frame, "ĐANG TẢI MODEL OBJECT DETECTION...", 
+        cv2.putText(loading_frame, "LOADING OBJECT DETECTION MODEL...", 
                     (frame_width//2 - 220, frame_height//2), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
         cv2.imshow("Autonomous System", loading_frame)
         cv2.waitKey(1)
         
-        # Gửi frame về server
-        if client_socket:
-            send_frame(client_socket, loading_frame)
-        
-        # Pre-load object detector model để đảm bảo đã sẵn sàng trước khi chạy
+        # Pre-load object detector model
         dummy_frame = np.zeros((frame_height, frame_width, 3), dtype=np.uint8)
         controller.detector.detect(dummy_frame)
-        print("Model đã được tải xong!")
+        print("Model loaded successfully!")
         
-        # Vòng lặp khởi tạo để kiểm tra hệ thống trước khi cho phép xe chạy
+        # System initialization checks
         init_count = 0
         while init_count < initialization_frames:
             ret, frame = cap.read()
             if not ret:
                 raise Exception("Could not read frame during initialization")
             
-            # Thêm thông báo khởi động vào khung hình chính
+            # Display initialization progress
             display_frame = frame.copy()
             overlay = display_frame.copy()
-            # Tạo một lớp overlay mờ để làm nổi bật thông báo
             cv2.rectangle(overlay, (0, frame_height//2-60), (frame_width, frame_height//2+60), (0, 0, 0), -1)
             cv2.addWeighted(overlay, 0.5, display_frame, 0.5, 0, display_frame)
-            cv2.putText(display_frame, "HỆ THỐNG ĐANG KHỞI ĐỘNG", 
+            cv2.putText(display_frame, "SYSTEM INITIALIZING", 
                         (frame_width//2 - 150, frame_height//2 - 20), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
-            cv2.putText(display_frame, f"Tiến trình: {init_count+1}/{initialization_frames}", 
+            cv2.putText(display_frame, f"Progress: {init_count+1}/{initialization_frames}", 
                         (frame_width//2 - 100, frame_height//2 + 20), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
             
-            # Hiển thị cửa sổ chính
+            # Display initialization window
             cv2.imshow("Autonomous System", display_frame)
-            
-            # Gửi frame về server
-            if client_socket:
-                send_frame(client_socket, display_frame)
             
             key = cv2.waitKey(1)
             if key == ord('q'):
-                print("Thoát chương trình...")
+                print("Exiting program...")
                 return
             
             init_count += 1
         
-        # Hiển thị thông báo xe đang chạy
+        # Display ready message
         ret, frame = cap.read()
         if ret:
             display_frame = frame.copy()
             overlay = display_frame.copy()
             cv2.rectangle(overlay, (0, frame_height//2-60), (frame_width, frame_height//2+60), (0, 0, 0), -1)
             cv2.addWeighted(overlay, 0.5, display_frame, 0.5, 0, display_frame)
-            cv2.putText(display_frame, "XE ĐANG CHẠY TỰ ĐỘNG", 
-                        (frame_width//2 - 150, frame_height//2), 
+            cv2.putText(display_frame, "SYSTEM READY - AWAITING COMMANDS", 
+                        (frame_width//2 - 220, frame_height//2), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
             cv2.imshow("Autonomous System", display_frame)
-            
-            # Gửi frame về server
-            if client_socket:
-                send_frame(client_socket, display_frame)
-                
             cv2.waitKey(1)
             
-            # CHỈ BẮT ĐẦU CHẠY XE SAU KHI ĐÃ TẢI MODEL XONG
-            controller.car.set_speed(DEFAULT_SPEED)
-            print("Xe bắt đầu chạy với tốc độ:", DEFAULT_SPEED)
             system_ready = True
+            print("System ready - awaiting mode selection from web interface")
         
-        # Vòng lặp chính của hệ thống
+        # Main system loop
         while system_ready:
             loop_start_time = time.time()
             ret, frame = cap.read()
@@ -229,263 +179,327 @@ def run_autonomous_system(cap, lk, ld, server_ip=None, server_port=None, model_p
             delta_time = current_time - last_time
             last_time = current_time
             
-            # Khởi tạo khung hình hiển thị
+            # Create display frame
             combined_frame = frame.copy()
             
-            # Cập nhật khoảng cách di chuyển
-            controller.car.state.update_distance(delta_time * 1000)  # Chuyển đổi thành ms
+            # Update vehicle distance tracking
+            controller.car.state.update_distance(delta_time * 1000)  # Convert to ms
             
             frame_count += 1
             
-            # Process only if enough time has passed (adaptive frame processing)
+            # Process frame only if enough time has passed (for performance)
             if current_time - last_process_time < 0.033:  # ~30fps max
                 key = cv2.waitKey(1)
                 if key == ord('q'):
-                    print("Thoát chương trình...")
+                    print("Exiting program...")
                     break
                     
-                # Hiển thị frame hiện tại mà không xử lý thêm
+                # Display current frame without processing
                 cv2.imshow("Autonomous System", combined_frame)
                 
-                # Gửi frame về server nếu cần
-                if client_socket:
-                    send_success = send_frame(client_socket, combined_frame)
-                    if not send_success and frame_count % 30 == 0:
-                        print("Failed to send frame, attempting to reconnect...")
-                        client_socket = connect_to_server(server_ip, server_port, max_retries=1)
-                        
+                # Check for simulated IMU data (in actual system, this would come from a serial port)
+                # For demo purposes, we'll generate simulated IMU data
+                if current_time - last_imu_update > 0.1:  # 10Hz IMU updates
+                    # Simulate IMU data (in a real system this would come from hardware)
+                    yaw = controller.car.state.steering_angle  # Use steering as proxy for yaw
+                    sim_imu_data = f"@imu:0.0,0.0,{yaw},{controller.car.state.current_speed/1000.0},0.0,0.0\r\n"
+                    
+                    # Process the IMU data for path planning
+                    if mode_controller.get_mode() == OperationMode.AUTO:
+                        path_controller.process_imu_data(sim_imu_data)
+                    
+                    last_imu_update = current_time
+                    
                 continue
                 
             last_process_time = current_time
             
-            # Nếu không ở chế độ đỗ xe, thực hiện phát hiện làn đường, nhưng skip 1 frame sau mỗi lần xử lý
-            lane_results = None
-            steering_angle = None
-            lane_fps = last_lane_fps  # Sử dụng giá trị FPS cuối cùng
+            # Get current operation mode
+            current_mode = mode_controller.get_mode()
             
-            if not controller.parking_mode:
-                # Tăng biến đếm cho lane frame
-                lane_frame_counter += 1
+            # Process based on current mode
+            if current_mode == OperationMode.STOP:
+                # In STOP mode, just display the frame without processing
+                controller.car.brake()
                 
-                # Chỉ xử lý mỗi frame thứ 2 (skip 1 frame)
-                if lane_frame_counter % 2 == 1:
-                    lane_start_time = time.time()
-                    lane_frame = frame.copy()
-                    lane_results = ld.lanes_detection(lane_frame)
+            elif current_mode in [OperationMode.LEGACY, OperationMode.AUTO]:
+                # For both LEGACY and AUTO modes, we detect lanes and objects
+                
+                # Lane detection processing (skip frames for performance)
+                lane_results = None
+                steering_angle = None
+                lane_fps = last_lane_fps
+                
+                if not controller.parking_mode:
+                    lane_frame_counter += 1
                     
-                    if lane_results is not None:
-                        steering_angle, lane_overlay = lk.lane_keeping(lane_results)
+                    if lane_frame_counter % 2 == 1:
+                        lane_start_time = time.time()
+                        lane_frame = frame.copy()
+                        lane_results = ld.lanes_detection(lane_frame)
                         
-                        # Đè khung hình lane detection lên khung hình kết hợp
-                        if lane_overlay is not None:
-                            # Chỉ sao chép các phần đã vẽ từ lane_overlay
-                            # Phát hiện sự khác biệt giữa lane_frame và lane_overlay
-                            diff = cv2.absdiff(lane_frame, lane_overlay)
-                            mask = cv2.cvtColor(diff, cv2.COLOR_BGR2GRAY)
-                            _, mask = cv2.threshold(mask, 20, 255, cv2.THRESH_BINARY)
+                        if lane_results is not None:
+                            # In AUTO mode, override lane keeping with path planning
+                            if current_mode == OperationMode.AUTO and path_controller.is_active:
+                                # Update path controller
+                                steering_angle, speed_factor, reached_target = path_controller.update()
+                                
+                                # Apply path planning steering angle
+                                controller.car.set_steering(int(steering_angle))
+                                
+                                # Adjust speed based on turn sharpness
+                                if speed_factor is not None:                                
+                                    if abs(steering_angle) > 15:  # For significant turns
+                                        target_speed = 100 
+                                    else:
+                                        turn_ratio = min(1.0, abs(steering_angle) / 15)
+                                        target_speed = int(250 - (150 * turn_ratio))  # Linear reduction from 250 to 100
+    
+                                    controller.car.set_speed(target_speed)
+
+                                # Use lane detection output for visualization only
+                                _, lane_overlay = lk.lane_keeping(lane_results)
+                                
+                            else:  # LEGACY mode - use lane keeping
+                                steering_angle, lane_overlay = lk.lane_keeping(lane_results)
+                                
+                                if steering_angle is not None:
+                                    controller.car.set_steering(int(steering_angle))
+                                    controller.car.state.current_lane_type = controller.lane_analyzer.detect_lane_type(
+                                        frame, lane_results)
                             
-                            # Áp dụng mask để chỉ sao chép các phần đã được vẽ
-                            lane_roi = cv2.bitwise_and(lane_overlay, lane_overlay, mask=mask)
-                            cv2.addWeighted(combined_frame, 1.0, lane_roi, 1.0, 0, combined_frame)
+                            # Overlay lane visualization on display frame
+                            if lane_overlay is not None:
+                                # Only copy the parts that differ (lane markings)
+                                diff = cv2.absdiff(lane_frame, lane_overlay)
+                                mask = cv2.cvtColor(diff, cv2.COLOR_BGR2GRAY)
+                                _, mask = cv2.threshold(mask, 20, 255, cv2.THRESH_BINARY)
+                                
+                                lane_roi = cv2.bitwise_and(lane_overlay, lane_overlay, mask=mask)
+                                cv2.addWeighted(combined_frame, 1.0, lane_roi, 1.0, 0, combined_frame)
                         
-                        if steering_angle is not None:
-                            controller.car.state.current_lane_type = controller.lane_analyzer.detect_lane_type(
-                                frame, lane_results)
-                    
-                    lane_fps = 1.0 / (time.time() - lane_start_time)
-                    last_lane_fps = lane_fps  # Lưu lại giá trị FPS hiện tại
-            
-            # Xử lý object detection
-            obj_start_time = time.time()
-            
-            # Sử dụng ObjectDetector từ hệ thống
-            detections = controller.detector.detect(frame)
-            
-            # Vẽ bounding box trực tiếp lên khung hình kết hợp nếu có phát hiện
-            if isinstance(detections, (list, np.ndarray)) and len(detections) > 0:
-                for det in detections:
-                    if len(det) >= 6:  # [x1, y1, x2, y2, conf, cls]
-                        x1, y1, x2, y2, conf, cls = det
-                        
-                        # Chuyển đổi sang int
-                        x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
-                        
-                        # Lấy tên lớp
-                        class_name = controller.traffic_processor.CLASS_NAMES[int(cls)] if int(cls) < len(controller.traffic_processor.CLASS_NAMES) else f"Class {int(cls)}"
-                        
-                        # Tạo màu dựa trên class id
-                        color = (int(hash(class_name) % 255), 
-                                 int(hash(class_name*2) % 255), 
-                                 int(hash(class_name*3) % 255))
-                        
-                        # Vẽ bounding box
-                        cv2.rectangle(combined_frame, (x1, y1), (x2, y2), color, 2)
-                        
-                        # Thêm nhãn với nền mờ
-                        text = f"{class_name}: {conf:.2f}"
-                        text_size = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)[0]
-                        cv2.rectangle(combined_frame, (x1, y1-text_size[1]-5), (x1+text_size[0]+5, y1), color, -1)
-                        cv2.putText(combined_frame, text, (x1, y1-5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-            
-            obj_fps = 1.0 / (time.time() - obj_start_time)
-            last_obj_fps = obj_fps  # Lưu lại giá trị FPS hiện tại
-            
-            # Xử lý điều khiển xe từ kết quả detection
-            highest_priority_speed = DEFAULT_SPEED
-            stop_condition = False
-            parking_action = None
-            parking_speed = None
-            parking_steering = None
-            
-            if isinstance(detections, (list, np.ndarray)) and len(detections) > 0:
-                # Convert to list if numpy array
-                if isinstance(detections, np.ndarray):
-                    detections = detections.tolist()
+                        lane_fps = 1.0 / (time.time() - lane_start_time)
+                        last_lane_fps = lane_fps
                 
-                # Sort detections by proximity (y2 coordinate)
-                detections.sort(key=lambda x: float(x[3]) if len(x) > 3 else 0, reverse=True)
+                # Object detection processing
+                obj_start_time = time.time()
+                detections = controller.detector.detect(frame)
                 
-                # Xử lý chế độ đỗ xe nếu đang trong parking mode
-                if controller.parking_mode:
-                    parking_spot_found = False
+                # Process and visualize detections
+                if isinstance(detections, (list, np.ndarray)) and len(detections) > 0:
                     for det in detections:
-                        if len(det) >= 6 and int(det[5]) == controller.traffic_processor.CLASS_NAMES.index('parking-spot'):
+                        if len(det) >= 6:  # [x1, y1, x2, y2, conf, cls]
+                            x1, y1, x2, y2, conf, cls = det
+                            
+                            # Convert to integers
+                            x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+                            
+                            # Get class name
+                            class_name = controller.traffic_processor.CLASS_NAMES[int(cls)] if int(cls) < len(controller.traffic_processor.CLASS_NAMES) else f"Class {int(cls)}"
+                            
+                            # Create color based on class
+                            color = (int(hash(class_name) % 255), 
+                                     int(hash(class_name*2) % 255), 
+                                     int(hash(class_name*3) % 255))
+                            
+                            # Draw bounding box
+                            cv2.rectangle(combined_frame, (x1, y1), (x2, y2), color, 2)
+                            
+                            # Add label with semi-transparent background
+                            text = f"{class_name}: {conf:.2f}"
+                            text_size = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)[0]
+                            cv2.rectangle(combined_frame, (x1, y1-text_size[1]-5), (x1+text_size[0]+5, y1), color, -1)
+                            cv2.putText(combined_frame, text, (x1, y1-5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+                
+                obj_fps = 1.0 / (time.time() - obj_start_time)
+                last_obj_fps = obj_fps
+                
+                # Process object detections for traffic rules in both LEGACY and AUTO modes
+                highest_priority_speed = DEFAULT_SPEED
+                stop_condition = False
+                parking_action = None
+                parking_speed = None
+                parking_steering = None
+                
+                if isinstance(detections, (list, np.ndarray)) and len(detections) > 0:
+                    # Convert to list if it's a numpy array
+                    if isinstance(detections, np.ndarray):
+                        detections = detections.tolist()
+                    
+                    # Sort detections by proximity (y2 coordinate)
+                    detections.sort(key=lambda x: float(x[3]) if len(x) > 3 else 0, reverse=True)
+                    
+                    # Handle parking mode
+                    if controller.parking_mode:
+                        parking_spot_found = False
+                        for det in detections:
+                            if len(det) >= 6 and int(det[5]) == controller.traffic_processor.CLASS_NAMES.index('parking-spot'):
+                                action, speed, steering = controller.parking_handler.process_parking(
+                                    controller.car.state, det, frame_width, frame_height)
+                                parking_action = action
+                                parking_speed = speed
+                                parking_steering = steering
+                                parking_spot_found = True
+                                break
+                                
+                        # If no parking spot found but in parking mode
+                        if not parking_spot_found:
                             action, speed, steering = controller.parking_handler.process_parking(
-                                controller.car.state, det, frame_width, frame_height)
+                                controller.car.state, None, frame_width, frame_height)
                             parking_action = action
                             parking_speed = speed
                             parking_steering = steering
-                            parking_spot_found = True
-                            break
-                            
-                    # Nếu không tìm thấy parking spot nhưng đang trong chế độ đỗ xe
-                    if not parking_spot_found:
-                        action, speed, steering = controller.parking_handler.process_parking(
-                            controller.car.state, None, frame_width, frame_height)
-                        parking_action = action
-                        parking_speed = speed
-                        parking_steering = steering
-                
-                # Process only the most critical detections
-                for det in detections[:3]:  # Limit to 3 most important detections
-                    if len(det) >= 6:  # Ensure detection has all required elements
-                        try:
-                            action, speed = controller.process_detection(det, frame)
-                            
-                            if action == 'stop':
-                                stop_condition = True
-                                last_stop_time = current_time
-                                controller.car.brake()
-                                break
-                            elif action in ['caution', 'slow'] and not stop_condition:
-                                if speed is not None:
-                                    highest_priority_speed = min(highest_priority_speed, 
-                                        int(speed))
-                                else:
-                                    highest_priority_speed = min(highest_priority_speed,
-                                        int(DEFAULT_SPEED * 0.5))
-                            elif action == 'proceed':
-                                if speed is not None:
-                                    highest_priority_speed = min(highest_priority_speed,
-                                        int(speed))
-                        except Exception as e:
-                            print(f"Error processing detection: {e}")
-                            continue
-            
-            # Kết hợp thông tin từ lane detection và object detection
-            if not stop_condition and current_time - last_stop_time > STOP_TIMEOUT:
-                # Ưu tiên xử lý parking nếu đang trong chế độ đỗ xe
-                if controller.parking_mode and parking_action is not None:
-                    # Cập nhật trạng thái xe dựa trên hành động đỗ xe
-                    controller.update_vehicle_state(parking_action, parking_speed, parking_steering)
                     
-                    # Nếu đã hoàn thành quá trình đỗ xe
-                    if parking_action == 'proceed':
-                        controller.parking_mode = False
-                        controller.car.state.reset_parking_state()
-                        print("Parking completed, returning to normal mode")
-                else:
-                    # Chế độ điều khiển bình thường
-                    if controller.car.state.current_speed == 0:
-                        controller.car.set_speed(highest_priority_speed)
+                    # Process critical detections
+                    for det in detections[:3]:  # Limit to 3 most important
+                        if len(det) >= 6:
+                            try:
+                                action, speed = controller.process_detection(det, frame)
+                                
+                                if action == 'stop':
+                                    stop_condition = True
+                                    last_stop_time = current_time
+                                    controller.car.brake()
+                                    break
+                                elif action in ['caution', 'slow'] and not stop_condition:
+                                    if speed is not None:
+                                        highest_priority_speed = min(highest_priority_speed, 
+                                            int(speed))
+                                    else:
+                                        highest_priority_speed = min(highest_priority_speed,
+                                            int(DEFAULT_SPEED * 0.5))
+                                elif action == 'proceed':
+                                    if speed is not None:
+                                        highest_priority_speed = min(highest_priority_speed,
+                                            int(speed))
+                            except Exception as e:
+                                print(f"Error processing detection: {e}")
+                                continue
+                
+                # Apply control decisions based on detections and mode
+                if not stop_condition and current_time - last_stop_time > STOP_TIMEOUT:
+                    # Handle parking first if in parking mode
+                    if controller.parking_mode and parking_action is not None:
+                        controller.update_vehicle_state(parking_action, parking_speed, parking_steering)
+                        
+                        if parking_action == 'proceed':
+                            controller.parking_mode = False
+                            controller.car.state.reset_parking_state()
+                            print("Parking completed, returning to normal mode")
+                    elif current_mode == OperationMode.AUTO:
+                        # In AUTO mode, speed is managed by path controller
+                        pass
+                    else:
+                        # Normal speed control in LEGACY mode
+                        if controller.car.state.current_speed == 0:
+                            controller.car.set_speed(highest_priority_speed)
             
-                    # Apply steering with improved response
-                    if not controller.parking_mode and steering_angle is not None:
-                        controller.car.set_steering(int(steering_angle))
+            # Streaming functionality
+            if video_streamer:
+                # Update frame in the video streamer
+                video_streamer.update_frame(combined_frame)
+            elif stream_socket and server_ip and server_port:
+                try:
+                    # Compress frame before sending
+                    encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 85]
+                    _, buffer = cv2.imencode('.jpg', combined_frame, encode_param)
+                    stream_socket.sendto(buffer.tobytes(), (server_ip, server_port))
+                except Exception as e:
+                    print(f"Streaming error: {e}")
             
-            # Hiển thị overlay thông tin hệ thống lên khung hình chính
-            # Tạo vùng mờ ở góc dưới bên phải cho thông tin hệ thống
+            # Add system information overlay
+            # Create semi-transparent region for system info
             overlay = combined_frame.copy()
             cv2.rectangle(overlay, (frame_width-220, frame_height-150), (frame_width, frame_height), (0, 0, 0), -1)
             cv2.addWeighted(overlay, 0.6, combined_frame, 0.4, 0, combined_frame)
             
-            # Thêm thông tin hệ thống lên khung hình
+            # Display system information
             cv2.putText(combined_frame, f"Speed: {controller.car.state.current_speed}", 
                         (frame_width-210, frame_height-120), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
             cv2.putText(combined_frame, f"Steering: {controller.car.state.steering_angle}", 
                         (frame_width-210, frame_height-90), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
             cv2.putText(combined_frame, f"Lane: {controller.car.state.current_lane_type}", 
                         (frame_width-210, frame_height-60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
+            
+            # Display mode information
+            mode_text = "MODE: " + current_mode.name
+            
+            # Pick color based on mode
+            if current_mode == OperationMode.STOP:
+                mode_color = (0, 0, 255)  # Red
+            elif current_mode == OperationMode.AUTO:
+                mode_color = (0, 255, 0)  # Green
+            elif current_mode == OperationMode.LEGACY:
+                mode_color = (255, 255, 0)  # Yellow
+            else:
+                mode_color = (255, 255, 255)  # White
+                
+            cv2.putText(combined_frame, mode_text, 
+                        (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, mode_color, 2)
                         
-            # Hiển thị trạng thái đỗ xe hoặc dừng với màu khác nhau
-            status_color = (0, 255, 0)  # Mặc định là màu xanh (RUNNING)
+            # Display status
+            status_color = (0, 255, 0)  # Default green (RUNNING)
             status_text = "RUNNING"
             
             if controller.parking_mode:
                 parking_state = controller.car.state.parking_state.name if controller.car.state.parking_state else "None"
                 status_text = f"PARKING: {parking_state}"
-                status_color = (0, 200, 200)  # Màu vàng
+                status_color = (0, 200, 200)  # Yellow
             elif stop_condition:
                 status_text = "STOPPED"
-                status_color = (0, 0, 255)  # Màu đỏ
-            
-            # Hiển thị trạng thái ở trên cùng không có nền
+                status_color = (0, 0, 255)  # Red
+                
             cv2.putText(combined_frame, f"STATUS: {status_text}", 
-                        (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, status_color, 2)
-            
-            # Hiển thị FPS to ở phía trên tương tự dòng status, không có nền đen
-            # Hiển thị FPS Lane với font size lớn hơn
+                        (10, 45), cv2.FONT_HERSHEY_SIMPLEX, 0.7, status_color, 2)
+                        
+            # Display FPS information
             cv2.putText(combined_frame, f"LANE FPS: {lane_fps:.1f}", 
                         (230, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-                        
-            # Hiển thị FPS Object với font size lớn hơn
             cv2.putText(combined_frame, f"OBJ FPS: {obj_fps:.1f}", 
                         (460, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+                        
+            # Add path planning info if in AUTO mode
+            if current_mode == OperationMode.AUTO and path_controller.is_active:
+                status = path_controller.get_navigation_status()
+                cv2.putText(combined_frame, f"Path: {status['current_node']} -> {status['next_node']}", 
+                            (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 1)
+                cv2.putText(combined_frame, f"Dist to next: {status['distance_to_next']:.2f}m", 
+                            (10, 95), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 1)
             
-            # Hiển thị thông tin streaming nếu đang kết nối
-            if client_socket:
-                cv2.putText(combined_frame, "STREAMING: ON", 
-                            (frame_width-210, frame_height-30), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 1)
-            
+            # Display the combined frame
             cv2.imshow("Autonomous System", combined_frame)
             
-            # Gửi frame về server nếu có kết nối
-            if client_socket:
-                send_success = send_frame(client_socket, combined_frame)
-                if not send_success and frame_count % 30 == 0:
-                    print("Failed to send frame, attempting to reconnect...")
-                    client_socket = connect_to_server(server_ip, server_port, max_retries=1)
-            
-            # Xử lý phím điều khiển
+            # Process keyboard input
             key = cv2.waitKey(1)
             if key == ord('q'):
-                print("Thoát chương trình...")
+                print("Exiting program...")
                 break
             elif key == ord('b'):
                 controller.car.brake()
-                print("Phanh khẩn cấp!")
+                print("Emergency brake!")
             elif key == ord('r'):
                 controller.car.set_speed(DEFAULT_SPEED)
-                print("Tiếp tục di chuyển")
+                print("Resume movement")
+            elif key == ord('a'):  # Manual mode switching via keyboard for testing
+                mode_controller.set_mode(OperationMode.AUTO)
+            elif key == ord('l'):
+                mode_controller.set_mode(OperationMode.LEGACY)
+            elif key == ord('s'):
+                mode_controller.set_mode(OperationMode.STOP)
                 
     finally:
+        # Clean shutdown
         controller.car.brake()
+        time.sleep(0.2)
+        controller.car.set_power_state(0)
         controller.car.close()
         
-        # Đóng kết nối socket nếu có
-        if 'client_socket' in locals() and client_socket:
-            client_socket.close()
-            print("Socket connection closed")
-            
+        # Stop the mode controller
+        mode_controller.stop()
+        
+        # Close any open windows
         cv2.destroyAllWindows()
+        
+        # Close streaming socket if open
+        if stream_socket:
+            stream_socket.close()

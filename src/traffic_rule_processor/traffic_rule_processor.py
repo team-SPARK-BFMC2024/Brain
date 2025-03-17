@@ -83,12 +83,12 @@ class TrafficRuleProcessor:
             if relative_pos > 0.8:
                 return 'stop', 0
             elif relative_pos > 0.6:
-                return 'caution', 150  # Tăng từ 20 lên 150
+                return 'caution', 150 
             else:
-                return 'caution', 180  # Tăng từ 25 lên 180
+                return 'caution', 180 
         except Exception as e:
             print(f"Error processing pedestrian detection: {e}")
-            return 'caution', 150  # Tăng từ 20 lên 150
+            return 'caution', 150 
 
     def process_vehicle(self, detection, lane_type, frame_width, frame_height):
         try:
@@ -98,15 +98,14 @@ class TrafficRuleProcessor:
             vehicle_height = y2 - y1
             relative_distance = 1 - (y2 / frame_height)
             
-            # Tăng base_following_speed từ 30 lên 180
             base_following_speed = 180
             
             if relative_distance < 0.2:
-                following_speed = base_following_speed * 0.6  # 108
+                following_speed = base_following_speed * 0.6 
             elif relative_distance < 0.4:
-                following_speed = base_following_speed * 0.8  # 144
+                following_speed = base_following_speed * 0.8 
             else:
-                following_speed = base_following_speed  # 180
+                following_speed = base_following_speed 
             
             in_our_lane = (vehicle_center_x > frame_width * 0.4 and 
                           vehicle_center_x < frame_width * 0.6)
@@ -116,7 +115,7 @@ class TrafficRuleProcessor:
                     return 'follow', int(following_speed)
                 else:
                     if vehicle_height > frame_height * 0.4:
-                        return 'overtake', 220  # Tăng từ 40 lên 220
+                        return 'overtake', 220 
                     else:
                         return 'follow', int(following_speed)
             return None, None

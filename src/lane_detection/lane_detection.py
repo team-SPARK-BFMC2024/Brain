@@ -7,10 +7,6 @@ from scipy.signal import find_peaks
 
 
 class LaneDetection:
-    """
-    This class implements the lane detection algorithm by detecting lane lines in an input image using computer vision techniques.
-    """
-
     def __init__(self, width, height, camera, lk):
 
         self.height = height
@@ -111,42 +107,6 @@ class LaneDetection:
 
 
     def lanes_detection(self, src):
-        """Performs the lane detection on the given frame
-        1) Finds the lane peaks using the 'peaks_detection' function
-        2) Choose the correct left and right lane
-        3) Convert lane from points (list) to polyfit (array)
-        4) Post processing on lanes
-
-        Parameters
-        ----------
-        src : array
-            Input image
-
-        Results
-        -------
-        frame: numpy array
-            Representing the lane detection output image, including the detected lanes, lane peaks, 
-            and lane certainty visualization
-        left: list
-            Of points representing the left lane
-        right: list
-            Of points representing the right lane
-        left_coef: numpy array
-            Representing a 2nd degree polynomial fit of the left lane (coefficients representing the left lane)
-        right_coef: numpy array
-            Representing a 2nd degree polynomial fit of the right lane (coefficients representing the right lane)
-        l_perc: float
-            The percentage of points belonging to the left lane
-        r_perc: float
-            The percentage of points belonging to the right lane
-        trust_left_lane: boolean
-            Indicating whether the left lane is trustworthy or not
-        trust_right_lane: boolean
-            Indicating whether the right lane is trustworthy or not
-        trust_lk: boolean
-            Indicating whether the detected lanes are trustworthy or not
-        """
-
         lanes, peaks, gray = self.peaks_detection(src)
         # self.peaks_clustering_visualization(src, lanes)
         left, right = self.choose_correct_lanes(lanes)
@@ -156,8 +116,8 @@ class LaneDetection:
             heights_l = [gray[y][x] for x,y in left]
             heights_r = [gray[y][x] for x,y in right]
             maximum = 170
-            tmp = 0 if len(heights_l) == 0 or len(heights_r) == 0 else min(min(heights_l), min(heights_r)) - 20
-            # tmp = 0 if len(heights_l) == 0 or len(heights_r) == 0 else (sum(heights_l) + sum(heights_r)) / (len(heights_l) + len(heights_r)) - 20
+            #tmp = 0 if len(heights_l) == 0 or len(heights_r) == 0 else min(min(heights_l), min(heights_r)) - 20
+            tmp = 0 if len(heights_l) == 0 or len(heights_r) == 0 else (sum(heights_l) + sum(heights_r)) / (len(heights_l) + len(heights_r)) - 20
             if tmp >= self.minimum and tmp <= maximum : 
                 self.square_pulses_min_height = tmp
                 # print(f"set to {tmp}")
@@ -247,68 +207,22 @@ class LaneDetection:
         if detected_line_segment : 
             frame = cv2.line(frame, detected_line_segment[0], detected_line_segment[1], (143,188,143), thickness=5)
 
-            # w1 = detected_line_segment[0][0]
-            # w2 = detected_line_segment[1][0]
-            # h1 = int(line["slope"] * w1 + line["intercept"])
-            # h2 = int(line["slope"] * w2 + line["intercept"])
+            w1 = detected_line_segment[0][0]
+            w2 = detected_line_segment[1][0]
+            h1 = int(line["slope"] * w1 + line["intercept"])
+            h2 = int(line["slope"] * w2 + line["intercept"])
 
-            # frame = cv2.line(frame, (w1,h1), (w2,h2), (150,150,150), thickness=3)
+            frame = cv2.line(frame, (w1,h1), (w2,h2), (150,150,150), thickness=3)
 
     def horizontal_detection(self, frame, max_allowed_slope=0.25):
-        """Performs the horizontal detection on the given frame
-        1) Finds the base point using the 'detect_main_point' function
-        2) Caculates the lanes endpoints 'detect_lane_line_endpoints'
-        3) Check if the results represident a horizontal line
-        
-        Parameters
-        ----------
-        frame : array
-            Input image
-        max_allowed_slope : float
-            The maximum slope that a horizontal line can have. Used to discard false detections.
-        
-        Results
-        -------
-        list : [[x1,y1], [x2,y2]] 
-            horizontal lane boundaries. start=[x1,y1], end=[x2,y2]. 
-        dict : {"slope": slope, "intercept": intercept, "num_of_slopes": num_of_slopes}
-            a possible horizontal line.
-        bool : hor_exists
-            if the detected horizontal line is acceptable.    
-        """
-        # 1)
         main_point, line = self.detect_main_point(frame, max_allowed_slope)
-        # 2)
         detected_line_segment = self.detect_lane_line_endpoints(frame, main_point, line, max_allowed_slope)
-        # 3)
         hor_min_width_dist = 0.2 * self.width
         hor_exists = detected_line_segment and (detected_line_segment[1][0] - detected_line_segment[0][0]) > hor_min_width_dist
 
         return detected_line_segment, line, hor_exists
 
     def detect_main_point(self, frame, max_allowed_slope):
-        """First it creates a vertical histogram and detects a main/base point (when
-        there are no detections the search continues with verical histograms at
-        different withds. Maximun number: max_iterations). If a base point is not
-        detected the function terminates, else it continues by identifying two near
-        points (on the left and right side of the base point). With the new points
-        a line is calculated (that rouphly reprisents the horizontal line).
-
-        Parameters
-        ----------
-        frame : array
-            Input image
-        max_allowed_slope : float
-            The maximum slope that a horizontal line can have. Used to discard false detections.
-
-        Results
-        -------
-        list : [x,y]
-            the base/main point of the horizontal line.
-        dict : {"slope": slope, "intercept": intercept, "num_of_slopes": num_of_slopes}
-            a possible horizontal line.
-        """
-        
         src = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         
         max_iterations = 3
@@ -400,24 +314,6 @@ class LaneDetection:
         return None, None
 
     def detect_lane_line_endpoints(self, frame, main_point, line, max_allowed_slope):
-        """Finds the boundaries of the lane. Starting point is the inputed main_point.
-        First it finds the left boundary by searcing leftmost for new points near 
-        the inputed line. The process stops when there is no new point or the new 
-        point is not accepted (not allowed slope or height difference from line).
-        The boundary is the last detected point. Same process for the right boundary.
-
-        Parameters
-        ----------
-        frame : array
-            Input image
-        list : [x,y]
-            the base/main point of the horizontal line. (the search starts from here)
-        line : dict 
-            the possible horizontal line. {"slope": slope, "intercept": intercept, "num_of_slopes": num_of_slopes} 
-        max_allowed_slope : float
-            The maximum slope that a horizontal line can have. Used to discard false detections.
-        
-        """
         if not main_point : 
             return None
         
@@ -460,33 +356,6 @@ class LaneDetection:
         return (x1,x2)
 
     def search_for_near_point(self, frame, gray_frame, base_point, max_allowed_slope, diraction="right", width_step_perc=0.03, line=None):
-        """Searchs for points near (depends on the diracion, width_step_perc and the line) the base_point.
-        The detected point is accepted only if it meats the following constraints:
-        - does not exceed the allowed height difference,
-        - the slope of the line with the base point is accepted (<= max_allowed_slope)
-
-        Parameters
-        ----------
-        frame : array
-            BGR image (for visulization if step_by_step is True)
-        gray_frame : array
-            grayscaled image (for the histogram).
-        base_point : dict
-            the previous detected point {'height': height, "width": width}.
-        max_allowed_slope : float
-            The maximum slope that a horizontal line can have. Used to discard false detections.
-        diraction : string
-            the diraction of the search (right-left).
-        width_step_perc : float
-            the width step from the previous detection.
-        line : dict 
-            the possible horizontal line. {"slope": slope, "intercept": intercept, "num_of_slopes": num_of_slopes} 
-        
-        Returns
-        -------
-        dictionary :
-            representing a point {'height': height, "width": width}.
-        """
         max_allowed_height_dif_from_line = 0.03 * self.height
         
         operator = 1 if diraction=="right" else -1 
@@ -550,29 +419,6 @@ class LaneDetection:
     # ------------------------------------------------------------------------------ #
 
     def peaks_detection(self, frame):
-        """Takes an image as input and returns the peaks of several different slices.
-        These peaks are lane points. After finding every peak of a slice, the points
-        are segmented into different lanes depending on their (x,y) values.
-
-        Steps :
-        1) Create the slices
-        2) For each slice, find the peaks using a peak detection algorithm. (find_lane_peaks)
-        3) Segment the peaks into different lanes based on the (x,y) values. (peaks_clustering)
-        4) Return a list of lists of peaks representing the lane points in the image and a list
-           of all the detected peaks.
-
-        Parameteres
-        -----------
-        frame : array
-            Input frame
-
-        Returns
-        -------
-        lanes : list
-            of lists of peaks representing different lanes
-        peaks : list
-            of all the detected peaks
-        """
 
         src = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         peaks = []
@@ -613,21 +459,6 @@ class LaneDetection:
         return lanes, peaks, src
 
     def choose_correct_lanes(self, lanes):
-        """Given a list of all lanes detected in an image, this function selects the left and right lanes.
-
-        Parameters
-        ----------
-        lanes : list
-            A list of all lanes detected in the image, with each lane represented by a list of [x, y] 
-            coordinate lists.
-
-        Returns
-        -------
-        left : list
-            A list of [x,y] coordinate lists of the left lane.
-        right : list
-            A list of [x,y] coordinate lists of the right lane.
-        """
 
         # initialize the 2 lanes
         left, right = [], []
@@ -664,50 +495,29 @@ class LaneDetection:
         # Check if these 2 lanes are "correct" (if they are near) (else keep only one lane)
         if left and right:
 
-             left_top, left_bot = self.calculate_lane_boundaries(left)
-             right_top, right_bot = self.calculate_lane_boundaries(right)
+            left_top, left_bot = self.calculate_lane_boundaries(left)
+            right_top, right_bot = self.calculate_lane_boundaries(right)
 
-             top_dif = (right_top - left_top) / 2
-             bot_dif = (right_bot - left_bot) / 2
+            top_dif = (right_top - left_top) / 2
+            bot_dif = (right_bot - left_bot) / 2
 
-             # if lanes width difference is small/big delete a lane
-             if not (
-                 top_dif > self.min_top_width_dif
-                 and top_dif < self.max_top_width_dif
-                 and bot_dif > self.min_bot_width_dif
-                 and bot_dif < self.max_bot_width_dif
-             ):
-                 # keep lane with most peaks
-                 if len(left) > len(right):
-                     right = []
-                 else:
-                     left = []
+            # if lanes width difference is small/big delete a lane
+            if not (
+                top_dif > self.min_top_width_dif
+                and top_dif < self.max_top_width_dif
+                and bot_dif > self.min_bot_width_dif
+                and bot_dif < self.max_bot_width_dif
+            ):
+                # keep lane with most peaks
+                if len(left) > len(right):
+                    right = []
+                else:
+                    left = []
 
         return left, right
 
     def create_lanes_from_peaks(self, frame, left, right):
-        """Takes the points of the two lanes and creates a polyfit for each. 
-        Visualization depents on the self.print_lanes param.
-
-        Parameters
-        ----------
-        frame : array
-            The initial frame
-        left : list
-            Points representing the left lane.
-        right : list
-            Points representing the right lane.
-
-        Returns
-        -------
-        frame : array
-            The frame with the two lanes vizualized, if self.print_lanes is True.
-        array
-            Left polyfit.
-        array
-            Right polyfit.
-        """
-
+        
         left_coef = self.fit_polyfit(left)
         right_coef = self.fit_polyfit(right)
 
@@ -718,37 +528,6 @@ class LaneDetection:
         return left_coef, right_coef
 
     def lanes_post_processing(self, frame, left_coef, left, right_coef, right, allowed_difference=None):
-        """Finds the certainty for each lane.
-        If the difference is greater than the allowed then delete the "uncertain" lane.
-
-        Parameters
-        ----------
-        frame : array
-            Image input
-        left_coef : array
-            Coefficients of left lane
-        left : list
-            Points representing the left lane
-        right_coef : array
-            Coefficients of right lane
-        right : list
-            Points representing the right lane
-        allowed_difference : float
-            percentege difference between the certainties of the two lanes. [0-100]
-
-        Returns
-        -------
-        frame : array
-            Image after printing the 2 cerainties
-        left_coef : array | None
-            of the left lane
-        right_coef : array | None
-            of the right lane
-        trust_left_lane: boolean
-            Indicating whether the left lane is trustworthy or not
-        trust_right_lane: boolean
-            Indicating whether the right lane is trustworthy or not
-        """
 
         if allowed_difference is None:
             allowed_difference = self.allowed_certainty_perc_dif
@@ -770,8 +549,6 @@ class LaneDetection:
 
         return left_coef, right_coef, l_perc, r_perc, trust_l, trust_r, trust_lk
 
-    # ------------------------------------------------------------------------------ #
-
     def find_lane_peaks(
         self,
         slice,
@@ -781,30 +558,7 @@ class LaneDetection:
         pix_dif,
         allowed_peaks_width_error,
     ):
-        """Finds 'square pulses' (inside the slice), coresponding to lane points.
-        The width of a pulse depends on the height of the slice (height_norm).
-
-        Parameters
-        ----------
-        slice : list
-            list of a histogram that we want to find the lane points (square pulses).
-        height_norm : float
-            normalization of the height(bot=0,top=1) helps determine the width thressholds of a pulse.
-        min_height : int
-            the minimum height that a pulse must surpasses.
-        pix_dif : int
-            pixel number that helps the following param.
-        min_height_dif :int
-            the minimum difference that slice[i] and slice[i-pix_dif] must have in order to characterize it as 'square pulses'.
-        allowed_peaks_width_error :int
-            it's added to the peaks_max_width and it determines the upper threshold of the width of a 'square pulse'.
-
-        Returns
-        -------
-        peaks : array
-            all the detected lane points of the input slice.
-        """
-
+       
         peaks_max_width = self.peaks_max_width - (
             (self.peaks_max_width - self.peaks_min_width) * height_norm
         )
@@ -851,25 +605,7 @@ class LaneDetection:
         return peaks
 
     def peaks_clustering(self, points, height, lanes):
-        """Segments the points=(peaks[i],height) into lanes.
-        1) Finds the best matchups between the detected points and the lanes.
-        2) Appends the points that have a matchup into the corresponding lane.
-        3) Insert the remaining points (the ones that do not have a matchup) [new lanes].
-
-        Parameters
-        ----------
-        points : list
-            containing the detected points of the slice.
-        height : int
-            the height of the slice. The y value of the peaks.
-        lanes : list
-            list of lists representing all the different lanes. Each lane (nested list), contains a set of points = [peaks[i],height].
-
-        Returns
-        -------
-        lanes : list
-            Updated list containing the detected points.
-        """
+       
         # INITIALIZE LANES AND EXITS
         if not lanes:
             return [[[x, height]] for x in points]
@@ -949,36 +685,7 @@ class LaneDetection:
         lanes,
         height,
     ):
-        """
-        Calculates the best matchup between the detected points and the existing lanes 
-        in order to append them into those lanes. The information is past with the help
-        of 2 dictionaries (lanes_dict, points_dict) so we update them accordingly (call
-        by reference so no need to return). For each lane we check every peak inorder to
-        find the best qualified.
-
-        Parameters
-        ----------
-        lane_dict : dictionary
-            For each lane we store the index of the best qualified point (int) and the 
-            distance (float). [smaller distance => better point]
-        points_dict : dictionary
-            For each point we store respectively if it's a qualified point for a lane 
-            (bool) and the index of this lane (int).
-        detected_points : list
-            contains the x values of the detected points
-        lanes : list
-            list of lists representing all the different lanes. Each lane (nested list),
-            contains a set of points = [peaks[i],height].
-        height : int
-            the y value of all the detected points
-
-        Returns
-        -------
-        run_again : bool
-            returns True if some data were corrupted while updating to the best qualified
-            point so we must run this function again, else False.
-        """
-
+        
         run_again = False
 
         for lane_index in range(len(lanes)):
@@ -1134,25 +841,6 @@ class LaneDetection:
         return run_again
 
     def add_qualified_point(self, lanes_dict, points_dict, lane_index, peak_index, distance):
-        """Adds the input data (lane_index, peak_index, distance), into the input 
-        dictionaries (lanes_dict, points_dict). We run this function when we have
-        a new qualified point.
-
-        Parameters
-        ----------
-        lane_dict : dictionary
-            Here we store for every lane the index of the best qualified point (int) 
-            and the distance (float). [smaller distance => better point]
-        points_dict : dictionary
-            For every point we store respectively if it's a qualified point for a 
-            lane (bool) and the index of this lane (int).
-        lane_index : int
-            The index of the lane
-        peak_index : int
-            The index of the qualified point
-        distance : float
-            The distance of the point and the lane.
-        """
 
         lanes_dict[lane_index]["point_index"] = peak_index
         lanes_dict[lane_index]["distance"] = distance
@@ -1160,38 +848,10 @@ class LaneDetection:
         points_dict[peak_index]["lane_index"] = lane_index
 
     def verify_with_expected_value(self, lane, height, x_value):
-        """
-        This function verifies if the input point [height, x_value] can be added
-        on the input lane by :
-        Calculating some expected values (the number depends on the len(lane) value)
-        of the inputed lane, in the inputed height. The distances are the expected
-        values subtracted by the x_value, and it only cares about the smallest one 
-        (distance). Calculates a punishment depending on the len(lane) and the 
-        difference in height, between the last point of the lane and the currenct 
-        height. Finally, it returns whether we should add this point (bool) (if 
-        distance is smaller than what's allowed) and the distance with the added 
-        punishment (float).
-
-        Parameters
-        ----------
-        lane : list
-            a list containing all the points [x,y] of this lane.
-        height : int
-            the y value of the point that we found
-        x_value : int
-            the x value of the point that we want to add.
-
-        Returns
-        -------
-        True|False : bool
-            whether we can add this point=[height,x_value] in this lane or not.
-        distances : float
-            the calculated distance with the added punishment.
-        """
+       
 
         distances = []
 
-        # create a lane from the first and last lane points, then calculate the expected peak (when y=height)
 
         # We will calculate the expected peak = x0.
         x_dif, y_dif = lane[-1][0] - lane[0][0], lane[-1][1] - lane[0][1]
@@ -1226,25 +886,7 @@ class LaneDetection:
 
         return (True, dist + punish) if dist < max_allowed_dist else (False, dist + punish)
 
-    # ------------------------------------------------------------------------------ #
-
     def calculate_lane_boundaries(self, lane_points):
-        """
-        Calculates the points of the first and last slice based on the line
-        forming by the first and last identified point of the inputted lane.
-
-        Parameters
-        ----------
-        lane_points : array
-            points representing a lane.
-
-        Returns
-        -------
-        top : float
-            the width value at the top (The x value of the calculated line when y=top_height).
-        bot : float
-            the width value at the bottom (The x value of the calculated line when y=bot_height).
-        """
 
         x = [lane_points[0][0], lane_points[-1][0]]
         y = [lane_points[0][1], lane_points[-1][1]]
@@ -1262,21 +904,7 @@ class LaneDetection:
     # ------------------------------------------------------------------------------ #
 
     def fit_polyfit(self, lane, percentage_for_first_degree=0.3):
-        """Converts list to a polynomial. The degree depends on the percentage
-        of the detected points.
 
-        Parameters
-        ----------
-        lane : list
-            Points representing a lane.
-        percentage_for_first_degree : float
-            Determines the degree of the polynomial (first or second), it's a float number [0-1].
-
-        Returns
-        -------
-        lane_coef : array
-            the coefficients of the polynomial, len(lane_coef) is 3.
-        """
         lane_coef = None
 
         # if there is a lane
@@ -1295,21 +923,7 @@ class LaneDetection:
         return lane_coef
 
     def fit_polynomial_with_degree(self, points, degree=2):
-        """Converts points to a polynomial with the imported degree.
-
-        Parameters
-        ----------
-        points : list
-            the set of points that will create the polynomial.
-        degree : int
-            the degree of the polynomial. (1: first, 2: second degree ...)
-
-        Returns
-        -------
-        coef : array
-            the coefficients of the polynomial. len(coef) = degree
-        """
-        # Extract the x and y coordinates of the points
+        
         x = [point[0] for point in points]
         y = [point[1] for point in points]
 
@@ -1322,40 +936,13 @@ class LaneDetection:
         return coef
 
     def check_for_extreme_coefs(self, coefs):
-        """Checks and deletes extreme coefs
-
-        Parameters
-        ----------
-        coefs : array
-            of a lane.
-
-        Returns
-        -------
-        array | None
-            the coefs or None if there is an extreme value.
-
-        """
+        
 
         limits = {3: self.extreme_coef_second_deg, 2: self.extreme_coef_first_deg}
         return coefs if (coefs is not None and math.fabs(coefs[0]) < limits[len(coefs)]) else None
 
     def visualize_lane(self, coefs, frame, bgr_colour=(102, 0, 102)):
-        """Simple visualize a lane with the imported coefs to the imported frame.
-
-        Parameters
-        ----------
-        coefs : array
-            of a lane
-        frame : array
-            Input image
-        bgr_colour : tuple
-            colour for the visualization of the lane
-
-        Results
-        -------
-        frame : array
-            the image with the lane if self.print_lanes is True.
-        """
+        
         # check if we can or want the visualization to happen
         if coefs is None:
             return
@@ -1374,28 +961,10 @@ class LaneDetection:
 
         return
 
-    # ------------------------------------------------------------------------------ #
+  
 
     def find_lane_certainty(self, new_coeffs, prev_coeffs, peaks):
-        """Finds the certainty of a lane and returns a percentage generated equaly by the:
-        1) Similarity with the previous lane and the
-        2) Length of the first and last peak.
-
-        Parameters
-        ----------
-        new_coeffs : array
-            of the new detected lane
-        prev_coeffs : array
-            of the lane that was detected on the previous frame
-        peaks : list
-            Points representing the lane
-
-        Returns
-        -------
-        certainty : float
-            a percentage of the certainty of the imported lane.
-
-        """
+       
 
         if prev_coeffs is None or new_coeffs is None:
             return 0.0
@@ -1408,9 +977,9 @@ class LaneDetection:
 
         # Lane Peaks
         # 1)
-        peaks_percentage = len(peaks) / self.real_slices * 100
+        # peaks_percentage = len(peaks) / self.real_slices * 100
         # 2)
-        # peaks_percentage = (peaks[-1][1] - peaks[0][1]) / (self.top_row_index - self.bottom_row_index) * 100
+        peaks_percentage = (peaks[-1][1] - peaks[0][1]) / (self.top_row_index - self.bottom_row_index) * 100
 
         certainty = (
             self.certainty_perc_from_peaks * peaks_percentage
@@ -1420,20 +989,7 @@ class LaneDetection:
         return round(certainty, 2)
 
     def trust_lane_keeping(self, l_certainty, r_certainty):
-        """Checks if we can trust the lane detection
-
-        Parameters
-        ----------
-        l_certainty : float
-            a percentage of the certainty of the left lane.
-        r_certainty : float
-            a percentage of the certainty of the right lane.
-
-        Returns
-        -------
-        bool
-            if we can trust the lane keeping with the detected lanes
-        """
+        
 
         # Is lane keeping trusted?
         single_flag = (
@@ -1460,35 +1016,7 @@ class LaneDetection:
         frame,
         allowed_difference=None,
     ):
-        """This function compares the certainties of the left and right lanes and returns flags
-        indicating whether they are trustworthy or not. If the difference in certainty between
-        the lanes is greater than a specified threshold, the function sets the corresponding
-        flag to False, indicating that the lane should not be trusted. Otherwise, the flag is
-        set to True, indicating that the lane is reliable. If the function determines that a
-        lane is not trustworthy, it colors it gray in the corresponding frame.
-
-        Parameters
-        ----------
-        left_certainty : float
-            percentage corresponding to the certainty of the left lane
-        left_lane_coeffs : array
-           left lane polynomial
-        right_certainty : float
-            percentage corresponding to the certainty of the right lane
-        right_lane_coeffs : array
-           right lane polynomial
-        frame : array
-           Input image
-        allowed_defference : float
-           percentege difference between the certainties of the two lanes. [0-100]
-
-        Returns
-        -------
-        bool
-            trust_left_lane
-        bool
-            trust_right_lane
-        """
+        
         if allowed_difference is None:
             allowed_difference = self.allowed_certainty_perc_dif
 
@@ -1507,25 +1035,7 @@ class LaneDetection:
     # ------------------------------------------------------------------------------ #
 
     def visualize_all_peaks(self, frame, peaks, bgr_colour=(255, 0, 255)):
-        """Takes a frame and a list of peaks as input, and returns an image 
-        with circles drawn around each peak.
-
-        Parameters
-        ----------
-        frame : array
-            Input image
-        peaks : list
-            of lists [x,y] representing the peaks in the frame.
-        bgr_colour : tuple
-            An optional parameter representing the color of the circles.
-            The default value is (255, 0, 255), which is a shade of pink.
-
-        Returns
-        -------
-        frame : array
-            The image frame with circles drawn around each peak
-        """
-
+        
         for peak in peaks:
             point = (peak[0], peak[1])
             cv2.circle(frame, point, 2, bgr_colour, 2)
@@ -1533,24 +1043,7 @@ class LaneDetection:
         return
 
     def visualize_peaks(self, frame, left, right):
-        """This function takes a frame and 2 lists (representing the points of
-        each lane) as input, and returns an image with circles drawn around each point.
-
-        Parameters
-        ----------
-        frame : array
-            Input image
-        left : list
-            points of the left lane
-        right : list
-            points of the right lane
-
-        Returns
-        -------
-        frame : array
-            The image frame with circles drawn around each point
-        """
-
+        
         # visualize the Points
         for peak in left:
             point = (peak[0], peak[1])
@@ -1563,17 +1056,7 @@ class LaneDetection:
         return
 
     def visualize_lane_certainty(self, frame, l_perc, r_perc):
-        """This function takes a frame, the 2 lane certainty percentages and visualize them
-
-        Parameters
-        ----------
-        frame : array
-            Input image
-        l_perc : float
-            certainty of the left lane
-        r_perc : float
-            certainty of the right lane
-        """
+        
         cv2.putText(
             frame,
             f"{l_perc}",
@@ -1595,7 +1078,6 @@ class LaneDetection:
 
         return
 
-    # ------------------------------------------------------------------------------ #
     def is_dashed(self, lane):
 
         max_allowed_spaces_inside_a_dashed_lane = 1
@@ -1705,7 +1187,6 @@ class LaneDetection:
                 )
         return dashed_l, dashed_r
 
-    # ------------------------------------------------------------------------------ #
 
     def choose_405(self):
         self.is_horizontal = False

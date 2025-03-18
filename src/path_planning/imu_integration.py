@@ -140,16 +140,22 @@ class IMUIntegration:
         Args:
             x (float): New X coordinate
             y (float): New Y coordinate
-            yaw (float): New yaw angle in degrees
+            yaw (float): New yaw angle in degrees (optional, default: 0)
         """
         self.x = x
         self.y = y
-        self.yaw = yaw
+        
+        if yaw is not None:
+            self.yaw = yaw
+        
         self.distance_traveled = 0
         self.last_update_time = time.time()
         
+        
         if self.logger:
-            self.logger.info(f"IMU integration reset to position: ({x}, {y}), yaw: {yaw}°")
+            self.logger.info(f"IMU integration reset to position: ({x}, {y}), yaw: {self.yaw}°")
+            
+        return x, y, self.yaw
     
     def get_pose(self):
         """

@@ -54,16 +54,14 @@ class PathController:
         Args:
             start_node (str, optional): Starting node ID
             end_node (str, optional): Target node ID
-            
+                
         Returns:
             bool: True if navigation started successfully
         """
         try:
-            # Reset the IMU position tracking
             self.imu_processor.reset_position()
             
             if start_node is None or end_node is None:
-                # Use default navigation path - start at first node, end at last
                 nodes = list(self.path_planner.graph.nodes())
                 if not nodes:
                     self.logger.error("No nodes found in map")
@@ -74,7 +72,13 @@ class PathController:
                 if end_node is None:
                     end_node = nodes[-1]
             
-            # Find path between nodes
+            if start_node in self.path_planner.graph.nodes():
+                start_x = float(self.path_planner.graph.nodes[start_node]['x'])
+                start_y = float(self.path_planner.graph.nodes[start_node]['y'])
+                
+                self.imu_processor.reset_position(start_x, start_y)
+                self.logger.info(f"Position initialized to start node {start_node} at ({start_x}, {start_y})")
+            
             self.path = self.path_planner.find_path(start_node, end_node)
             
             if not self.path:
@@ -95,7 +99,6 @@ class PathController:
         except Exception as e:
             self.logger.error(f"Error starting navigation: {e}")
             return False
-            
     def stop_navigation(self):
         """Stop the navigation process."""
         self.is_active = False

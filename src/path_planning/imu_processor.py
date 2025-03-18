@@ -165,14 +165,30 @@ class IMUProcessor:
         
         return distance_step, self.yaw
         
-    def reset_position(self):
-        """Reset the position tracking."""
-        self.position_x = 0.0
-        self.position_y = 0.0
+    def reset_position(self, x=0.0, y=0.0, yaw=None):
+        """
+        Reset position tracking to coordinates specified.
+        
+        Args:
+            x (float): X coordinate to set
+            y (float): Y coordinate to set
+            yaw (float, optional): Yaw angle in degrees to set. If None, keeps current yaw.
+        """
+        self.position_x = x
+        self.position_y = y
+        
+        if yaw is not None:
+            self.yaw = yaw
+        
         self.velocity_x = 0.0
         self.velocity_y = 0.0
+        
         self.total_distance = 0.0
+        
         self.last_update_time = time.time()
+        
+        self.logger.info(f"Position reset to ({x}, {y}), yaw: {self.yaw}°")
+
         
     def get_position(self):
         """
